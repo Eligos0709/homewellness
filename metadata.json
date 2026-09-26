@@ -1,0 +1,8 @@
+{
+  "name": "Remix v5 HomeWellness",
+  "description": "HomeWellness real-time vital monitoring simulation with smartwatch timeline and semantic AI agent logs.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
