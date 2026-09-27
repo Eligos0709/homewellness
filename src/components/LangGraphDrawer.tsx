@@ -27,8 +27,14 @@ import {
   RefreshCw,
   Copy,
   Check,
+  Scale,
+  BookmarkCheck,
+  Compass,
+  Sliders,
+  Zap,
 } from 'lucide-react';
-import { SystemLogData, VitalData } from '../types';
+import { SystemLogData, VitalData, AgentPrinciple } from '../types';
+import { INITIAL_AGENT_PRINCIPLES } from '../data/principlesData';
 
 interface LangGraphDrawerProps {
   isOpen: boolean;
@@ -41,7 +47,7 @@ interface LangGraphDrawerProps {
 interface GraphNodeInfo {
   id: string;
   label: string;
-  category: 'INGEST' | 'ANALYTICS' | 'ROUTER' | 'TRIAGE' | 'NOTIFY' | 'CONTEXT' | 'SECURITY' | 'MEMORY';
+  category: 'INGEST' | 'ANALYTICS' | 'ROUTER' | 'TRIAGE' | 'PRINCIPLE' | 'GUARDRAIL' | 'NOTIFY' | 'CONTEXT' | 'SECURITY' | 'MEMORY';
   description: string;
   inputs: string[];
   outputs: string[];
@@ -56,11 +62,17 @@ export const LangGraphDrawer: React.FC<LangGraphDrawerProps> = ({
   selectedWatch,
   selectedTime,
 }) => {
-  const [activeTab, setActiveTab] = useState<'graph' | 'state' | 'context_memory' | 'code'>('graph');
-  const [selectedNodeId, setSelectedNodeId] = useState<string>('triage_router');
+  const [activeTab, setActiveTab] = useState<'graph' | 'principles' | 'state' | 'context_memory' | 'code'>('graph');
+  const [selectedNodeId, setSelectedNodeId] = useState<string>('principle_governor');
   const [isRunningFlow, setIsRunningFlow] = useState(false);
   const [activeExecutingNode, setActiveExecutingNode] = useState<string | null>(null);
   const [copiedCode, setCopiedCode] = useState(false);
+
+  // Principles state & compression simulation
+  const [principlesList, setPrinciplesList] = useState<AgentPrinciple[]>(INITIAL_AGENT_PRINCIPLES);
+  const [selectedPrincipleId, setSelectedPrincipleId] = useState<string>('prin-02');
+  const [isCompressingHistory, setIsCompressingHistory] = useState(false);
+  const [compressionSuccessMsg, setCompressionSuccessMsg] = useState<string | null>(null);
 
   if (!isOpen) return null;
 
@@ -111,7 +123,7 @@ export const LangGraphDrawer: React.FC<LangGraphDrawerProps> = ({
       id: 'clinical_triage',
       label: 'clinical_triage',
       category: 'TRIAGE',
-      description: 'Clinical priority classifier and risk scoring engine.',
+      description: 'Clinical priority classifier and biometric risk scoring engine.',
       inputs: ['state.z_score', 'state.vitals'],
       outputs: ['state.triage_status', 'state.risk_score'],
       latency: 16,
@@ -120,14 +132,60 @@ export const LangGraphDrawer: React.FC<LangGraphDrawerProps> = ({
     return {"triage_status": verdict, "risk_score": 72 if verdict != "normal" else 12}`,
     },
     {
+      id: 'principle_governor',
+      label: 'principle_governor',
+      category: 'PRINCIPLE',
+      description: 'LONG-TERM PRINCIPLE ENGINE: Compresses long-term records into enduring principles that continuously condition short-term memories and real-time situational contexts.',
+      inputs: ['state.triage_status', 'state.vitals', 'storage.principles_registry'],
+      outputs: ['state.active_principles', 'state.memory_filtration_mask', 'state.context_prior'],
+      latency: 15,
+      snippet: `async def principle_governor(state: HomeWellnessState) -> dict:
+    """Evaluate enduring principles (PRIN-01..04) compressed from historical records.
+    Unlike ephemeral contexts, Principles never decay and continuously shape memory & context."""
+    principles = await principle_registry.get_active(user_id=state["patient_id"])
+    context_prior = principles.compute_context_directive(state["vitals"])
+    memory_mask = principles.compute_memory_commit_filter(state["triage_status"])
+    return {
+        "active_principles": [p.code for p in principles],
+        "context_prior": context_prior,
+        "memory_filtration_mask": memory_mask,
+    }`,
+    },
+    {
+      id: 'clinical_guardrail',
+      label: 'clinical_guardrail',
+      category: 'GUARDRAIL',
+      description: 'SAFETY GUARDRAIL (Agent != Doctor): Strictly prohibits medication advice and medical diagnosis during abnormal vitals; enforces physician escalation disclaimer.',
+      inputs: ['state.triage_status', 'state.vitals', 'state.active_principles'],
+      outputs: ['state.guardrail_passed', 'state.medical_advice_prohibited', 'state.doctor_referral'],
+      latency: 6,
+      snippet: `async def clinical_guardrail(state: HomeWellnessState) -> dict:
+    """SAFETY GUARDRAIL POLICY: Agent is an AI wellness assistant, NOT a doctor.
+    Governed by long-term Principle PRIN-01:
+    - Strictly block medical diagnosis and causality claims.
+    - Strictly block medication dosage, intake changes, or drug recommendations.
+    - Mandate licensed physician / emergency contact referral disclaimer.
+    """
+    is_abnormal = state.get("triage_status") != "normal"
+    return {
+        "guardrail_active": True,
+        "is_doctor": False,
+        "medical_diagnosis_blocked": True,
+        "medication_advice_blocked": True,
+        "doctor_referral_required": is_abnormal,
+        "guardrail_verdict": "NON_DOCTOR_BOUNDARY_ENFORCED" if is_abnormal else "NOMINAL_SAFETY_PASSED"
+    }`,
+    },
+    {
       id: 'notification_dispatch',
       label: 'notification_dispatch',
       category: 'NOTIFY',
-      description: 'Evaluates push rules, anti-fatigue suppression, and watch haptic patterns.',
-      inputs: ['state.triage_status', 'state.incoming_context'],
+      description: 'Evaluates push rules, anti-fatigue suppression, and watch haptic patterns with principle tone modulation.',
+      inputs: ['state.triage_status', 'state.incoming_context', 'state.guardrail_passed', 'state.active_principles'],
       outputs: ['state.dispatched_notification', 'state.haptic_pattern'],
       latency: 18,
       snippet: `async def notification_dispatch(state: HomeWellnessState) -> dict:
+    # Governed by Principle PRIN-02 (Autonomy & Gentle Tone)
     if state["triage_status"] == "HR abnormal":
         return {"notification": "Warn: HR abnormal", "haptic": "TRIPLE_PULSE"}
     return {"notification": "none", "haptic": "NONE"}`,
@@ -136,12 +194,13 @@ export const LangGraphDrawer: React.FC<LangGraphDrawerProps> = ({
       id: 'context_resolver',
       label: 'context_resolver',
       category: 'CONTEXT',
-      description: 'Maintains situational awareness graph and calendar adherence deadlines.',
-      inputs: ['state.dispatched_notification', 'state.patient_id'],
+      description: 'Maintains situational awareness graph and calendar adherence deadlines, continuously conditioned by Principles.',
+      inputs: ['state.dispatched_notification', 'state.patient_id', 'state.active_principles'],
       outputs: ['state.present_context', 'state.incoming_context'],
       latency: 27,
       snippet: `async def context_resolver(state: HomeWellnessState) -> dict:
-    context = await semantic_graph.query(user_id=state["patient_id"])
+    # Conditioned by Principles (e.g. PRIN-02: Dinner verification before medication prompt)
+    context = await semantic_graph.query(user_id=state["patient_id"], principles=state["active_principles"])
     return {"present_context": context.present, "income_context": context.incoming}`,
     },
     {
@@ -160,19 +219,50 @@ export const LangGraphDrawer: React.FC<LangGraphDrawerProps> = ({
       id: 'memory_graph_sync',
       label: 'memory_graph_sync',
       category: 'MEMORY',
-      description: 'Commits episodic memory vectors into vector database for long-term recall.',
-      inputs: ['state.triage_status', 'state.present_context'],
+      description: 'Commits episodic memory vectors into vector database, filtered by long-term Principles.',
+      inputs: ['state.triage_status', 'state.present_context', 'state.memory_filtration_mask'],
       outputs: ['state.memory_node_id', 'state.committed_vector'],
       latency: 54,
       snippet: `async def memory_graph_sync(state: HomeWellnessState) -> dict:
-    if state["triage_status"] != "normal":
+    # Governed by Principle PRIN-03 (Transient Arrhythmia Smoothing):
+    # Only commit non-transient, clinically significant anomalies to episodic memory.
+    if state["triage_status"] != "normal" and state.get("memory_filtration_mask", {}).get("allow_commit", True):
         node = await vector_store.upsert_node(state["triage_status"])
         return {"new_to_memory": node.label}
     return {"new_to_memory": "none"}`,
     },
   ];
 
-  const selectedNode = graphNodes.find((n) => n.id === selectedNodeId) || graphNodes[2];
+  const selectedNode = graphNodes.find((n) => n.id === selectedNodeId) || graphNodes[4];
+
+  const handleSimulateCompression = () => {
+    if (isCompressingHistory) return;
+    setIsCompressingHistory(true);
+    setCompressionSuccessMsg(null);
+    setTimeout(() => {
+      const newPrinciple: AgentPrinciple = {
+        id: `prin-05-${Date.now()}`,
+        code: 'PRIN-05',
+        title: 'Post-Meal Digestion & Evening Ambulation Protocol',
+        category: 'PHYSIOLOGICAL_BASELINE',
+        statement:
+          'Alice exhibits a recurring mild resting heart rate uptick (+6–8 bpm) during 15 minutes of kitchen dinner cleanup. Classify this as normal postprandial activity; suppress false tachycardia alarms during 19:00–19:30 UTC.',
+        distilledFrom: 'Compressed from 14 verified evening activity episodes (dinner cleanup & light ambulation) over the past 2 weeks.',
+        temporalLifespan: 'LONG_TERM_ACTIVE',
+        compressionRatio: '14:1 episode compression',
+        influenceTarget: ['SHORT_TERM_MEMORY', 'PRESENT_CONTEXT'],
+        activeSince: '2026-09-18',
+        lastReinforced: new Date().toISOString(),
+        confidenceScore: 0.94,
+        isActive: true,
+      };
+      setPrinciplesList((prev) => [newPrinciple, ...prev]);
+      setSelectedPrincipleId(newPrinciple.id);
+      setIsCompressingHistory(false);
+      setCompressionSuccessMsg('Successfully distilled 14 episodic records into new enduring Principle: PRIN-05');
+      setTimeout(() => setCompressionSuccessMsg(null), 5000);
+    }, 1200);
+  };
 
   const runWorkflowExecution = () => {
     if (isRunningFlow) return;
@@ -183,6 +273,8 @@ export const LangGraphDrawer: React.FC<LangGraphDrawerProps> = ({
       'rolling_analytics',
       'triage_router',
       'clinical_triage',
+      'principle_governor',
+      'clinical_guardrail',
       'notification_dispatch',
       'context_resolver',
       'session_security',
@@ -199,13 +291,13 @@ export const LangGraphDrawer: React.FC<LangGraphDrawerProps> = ({
             setActiveExecutingNode(null);
           }, 600);
         }
-      }, idx * 400);
+      }, idx * 350);
     });
   };
 
   const handleCopyCode = () => {
-    const code = `# HomeWellness Continuous Health Loop - LangGraph StateGraph Definition
-from typing import TypedDict, Annotated, Literal
+    const code = `# HomeWellness Continuous Health Loop - LangGraph StateGraph Definition with Principle Engine
+from typing import TypedDict, Annotated, Literal, List
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
@@ -215,6 +307,14 @@ class VitalTelemetry(TypedDict):
     spo2: int
     batteryPct: int
 
+class GuardrailChannel(TypedDict):
+    guardrail_active: bool
+    is_doctor: bool
+    medical_diagnosis_blocked: bool
+    medication_advice_blocked: bool
+    doctor_referral_required: bool
+    guardrail_verdict: str
+
 class HomeWellnessState(TypedDict):
     patient_id: str
     vitals: VitalTelemetry
@@ -222,6 +322,9 @@ class HomeWellnessState(TypedDict):
     z_score: float
     triage_status: str
     risk_score: int
+    active_principles: List[str]          # <-- Invariant long-term compressed principles
+    memory_filtration_mask: dict          # <-- Governs short-term memory commits
+    guardrail: GuardrailChannel
     notification: str
     haptic: str
     present_context: str
@@ -235,6 +338,8 @@ builder = StateGraph(HomeWellnessState)
 builder.add_node("sensor_ingest", sensor_ingest)
 builder.add_node("rolling_analytics", rolling_analytics)
 builder.add_node("clinical_triage", clinical_triage)
+builder.add_node("principle_governor", principle_governor)  # <-- PRINCIPLE MODULE (Long-Term Invariant Guidance)
+builder.add_node("clinical_guardrail", clinical_guardrail)  # <-- SAFETY GUARDRAIL (Agent != Doctor)
 builder.add_node("notification_dispatch", notification_dispatch)
 builder.add_node("context_resolver", context_resolver)
 builder.add_node("session_security", session_security)
@@ -244,13 +349,15 @@ builder.add_node("memory_graph_sync", memory_graph_sync)
 builder.add_edge(START, "sensor_ingest")
 builder.add_edge("sensor_ingest", "rolling_analytics")
 
-def triage_router(state: HomeWellnessState) -> Literal["clinical_triage", "notification_dispatch"]:
+def triage_router(state: HomeWellnessState) -> Literal["clinical_triage", "principle_governor"]:
     if state.get("z_score", 0) >= 2.0:
         return "clinical_triage"
-    return "notification_dispatch"
+    return "principle_governor"
 
 builder.add_conditional_edges("rolling_analytics", triage_router)
-builder.add_edge("clinical_triage", "notification_dispatch")
+builder.add_edge("clinical_triage", "principle_governor")
+builder.add_edge("principle_governor", "clinical_guardrail")
+builder.add_edge("clinical_guardrail", "notification_dispatch")
 builder.add_edge("notification_dispatch", "context_resolver")
 builder.add_edge("context_resolver", "session_security")
 builder.add_edge("session_security", "memory_graph_sync")
@@ -327,9 +434,19 @@ homewellness_agent = builder.compile(checkpointer=checkpointer)
               <span>GRAPH: COMPILED &amp; ACTIVE</span>
             </span>
             <span className="text-neutral-600">•</span>
-            <span>NODES: 8</span>
+            <span>NODES: 10</span>
             <span className="text-neutral-600">•</span>
-            <span>EDGES: 9 (1 CONDITIONAL)</span>
+            <span>EDGES: 11 (1 CONDITIONAL)</span>
+            <span className="text-neutral-600">•</span>
+            <span className="text-purple-400 font-semibold flex items-center space-x-1">
+              <Scale className="w-3.5 h-3.5" />
+              <span>PRINCIPLES: {principlesList.length} INVARIANTS ACTIVE</span>
+            </span>
+            <span className="text-neutral-600">•</span>
+            <span className="text-emerald-400 font-semibold flex items-center space-x-1">
+              <ShieldCheck className="w-3.5 h-3.5" />
+              <span>GUARDRAIL: ACTIVE (NON-DOCTOR POLICY)</span>
+            </span>
             <span className="text-neutral-600">•</span>
             <span className={isAbnormal ? 'text-amber-400 font-semibold' : 'text-neutral-300'}>
               BRANCH: {isAbnormal ? 'ESCALATE_CRITICAL' : 'NOMINAL_MONITOR'}
@@ -354,6 +471,18 @@ homewellness_agent = builder.compile(checkpointer=checkpointer)
           >
             <Layers className="w-3.5 h-3.5" />
             <span>StateGraph Visualizer</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('principles')}
+            className={`py-2.5 px-3 border-b-2 text-xs font-sans font-medium flex items-center space-x-2 transition cursor-pointer whitespace-nowrap ${
+              activeTab === 'principles'
+                ? 'border-purple-400 text-purple-300 font-semibold'
+                : 'border-transparent text-neutral-400 hover:text-white'
+            }`}
+          >
+            <Scale className="w-3.5 h-3.5 text-purple-400" />
+            <span>Principle Engine ({principlesList.length})</span>
           </button>
           <button
             type="button"
@@ -411,6 +540,24 @@ homewellness_agent = builder.compile(checkpointer=checkpointer)
 
                 {/* Node Pipeline Layout */}
                 <div className="flex flex-col space-y-3">
+                  {/* Safety Guardrail Policy Strip */}
+                  <div className="p-3 rounded-lg bg-emerald-950/40 border border-emerald-500/50 flex items-start space-x-3 text-xs">
+                    <ShieldCheck className="w-5 h-5 text-emerald-400 shrink-0 mt-0.5" />
+                    <div className="space-y-0.5">
+                      <div className="flex items-center space-x-2">
+                        <span className="font-semibold text-emerald-300">
+                          Active Clinical Safety Guardrail (Agent != Doctor Policy)
+                        </span>
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-900/80 text-emerald-200 text-[10px] font-mono font-bold border border-emerald-700">
+                          HARD CONSTRAINT ENFORCED
+                        </span>
+                      </div>
+                      <p className="text-neutral-300 leading-relaxed font-sans text-[11.5px]">
+                        The Agent is an AI wellness assistant and is <strong className="text-white">NOT equal to a doctor</strong>. When abnormal vitals occur (e.g. resting HR 78–82 bpm), the <code className="text-emerald-300 font-mono">clinical_guardrail</code> node intercepts execution: it strictly blocks medical diagnosis and medication advice/prescription, mandating referral to licensed medical professionals.
+                      </p>
+                    </div>
+                  </div>
+
                   {/* START block */}
                   <div className="flex items-center space-x-3">
                     <div className="px-3 py-1 rounded bg-neutral-800 text-neutral-300 text-xs font-mono font-bold border border-neutral-700">
@@ -430,9 +577,23 @@ homewellness_agent = builder.compile(checkpointer=checkpointer)
 
                       let borderClass = 'border-neutral-800';
                       let bgClass = 'bg-[#11151c]';
+                      const isGuardrailNode = node.id === 'clinical_guardrail';
+                      const isPrincipleNode = node.id === 'principle_governor';
+
+                      if (isGuardrailNode) {
+                        borderClass = 'border-emerald-600/80 ring-1 ring-emerald-500/40';
+                        bgClass = 'bg-gradient-to-b from-emerald-950/40 to-[#11151c]';
+                      } else if (isPrincipleNode) {
+                        borderClass = 'border-purple-600/80 ring-1 ring-purple-500/40';
+                        bgClass = 'bg-gradient-to-b from-purple-950/40 to-[#11151c]';
+                      }
                       if (isSelected) {
-                        borderClass = 'border-emerald-500 ring-1 ring-emerald-500/50';
-                        bgClass = 'bg-emerald-950/20';
+                        borderClass = isPrincipleNode
+                          ? 'border-purple-400 ring-2 ring-purple-400/80 shadow-lg shadow-purple-950/50'
+                          : isGuardrailNode
+                          ? 'border-emerald-400 ring-2 ring-emerald-400/80 shadow-lg shadow-emerald-950/50'
+                          : 'border-emerald-500 ring-1 ring-emerald-500/50';
+                        bgClass = isPrincipleNode ? 'bg-purple-950/50' : isGuardrailNode ? 'bg-emerald-950/50' : 'bg-emerald-950/20';
                       }
                       if (isSimActive) {
                         borderClass = 'border-amber-400 ring-2 ring-amber-400/80 animate-pulse';
@@ -446,19 +607,51 @@ homewellness_agent = builder.compile(checkpointer=checkpointer)
                           className={`p-3 rounded-lg border transition-all cursor-pointer select-none relative ${borderClass} ${bgClass} hover:border-neutral-600`}
                         >
                           <div className="flex items-center justify-between mb-1">
-                            <span className="text-[10px] font-mono uppercase px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400">
+                            <span
+                              className={`text-[10px] font-mono uppercase px-1.5 py-0.5 rounded border ${
+                                isPrincipleNode
+                                  ? 'bg-purple-900/80 border-purple-600 text-purple-200 font-bold'
+                                  : isGuardrailNode
+                                  ? 'bg-emerald-900/80 border-emerald-600 text-emerald-200 font-bold'
+                                  : 'bg-neutral-900 border-neutral-800 text-neutral-400'
+                              }`}
+                            >
                               {node.category}
                             </span>
                             <span className="text-[10px] font-mono text-neutral-500">
                               {node.latency}ms
                             </span>
                           </div>
-                          <div className="font-semibold text-[13px] text-white font-mono truncate">
-                            {node.label}
+                          <div className="font-semibold text-[13px] text-white font-mono truncate flex items-center space-x-1.5">
+                            {isPrincipleNode && (
+                              <Scale className="w-3.5 h-3.5 text-purple-400 shrink-0" />
+                            )}
+                            {isGuardrailNode && (
+                              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                            )}
+                            <span className={isPrincipleNode ? 'text-purple-300' : isGuardrailNode ? 'text-emerald-300' : ''}>
+                              {node.label}
+                            </span>
                           </div>
                           <p className="text-[11px] text-neutral-400 mt-1 line-clamp-2 leading-tight">
                             {node.description}
                           </p>
+
+                          {/* Principle badge indicator */}
+                          {isPrincipleNode && (
+                            <div className="mt-2 pt-1.5 border-t border-purple-900/60 flex items-center justify-between text-[10px] text-purple-300">
+                              <span className="font-mono">Invariant Priors</span>
+                              <span className="text-purple-400 font-semibold">{principlesList.length} Active Rules</span>
+                            </div>
+                          )}
+
+                          {/* Guardrail badge indicator */}
+                          {isGuardrailNode && (
+                            <div className="mt-2 pt-1.5 border-t border-emerald-900/60 flex items-center justify-between text-[10px] text-emerald-300">
+                              <span className="font-mono">Policy: Agent != Doctor</span>
+                              <span className="text-emerald-400 font-semibold">Active</span>
+                            </div>
+                          )}
 
                           {/* Conditional routing indicator */}
                           {node.id === 'triage_router' && (
@@ -550,6 +743,215 @@ homewellness_agent = builder.compile(checkpointer=checkpointer)
             </div>
           )}
 
+          {activeTab === 'principles' && (
+            <div className="space-y-6">
+              {/* Header Title */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800 pb-4">
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-7 h-7 rounded-md bg-purple-950/80 border border-purple-600/70 flex items-center justify-center text-purple-400">
+                      <Scale className="w-4 h-4" />
+                    </div>
+                    <h3 className="text-base sm:text-lg font-semibold text-white font-sans">
+                      Principle Module: Long-term Wisdom &amp; Invariant Rules
+                    </h3>
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-1 font-sans leading-relaxed">
+                    Long-term important contexts distilled from past behaviors &amp; records are compressed into permanent <strong className="text-purple-300">Principles</strong> that continuously condition all short-term memories and current contexts.
+                  </p>
+                </div>
+
+                <div className="flex items-center space-x-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleSimulateCompression}
+                    disabled={isCompressingHistory}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 rounded-md bg-purple-600 hover:bg-purple-500 disabled:opacity-50 text-white text-xs font-sans font-medium transition cursor-pointer shadow-xs"
+                    title="Simulate background distillation: compress 14 episodic records into a new Principle"
+                  >
+                    <Sparkles className={`w-3.5 h-3.5 ${isCompressingHistory ? 'animate-spin' : ''}`} />
+                    <span>{isCompressingHistory ? 'Distilling Memories...' : 'Compress History -> Principle'}</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Compression feedback banner */}
+              {compressionSuccessMsg && (
+                <div className="p-3 rounded-lg bg-purple-950/80 border border-purple-500 text-purple-200 text-xs font-mono flex items-center space-x-2 animate-fadeIn">
+                  <CheckCircle2 className="w-4 h-4 text-purple-300 shrink-0" />
+                  <span>{compressionSuccessMsg}</span>
+                </div>
+              )}
+
+              {/* Cognitive Triad Comparison Diagram */}
+              <div className="bg-[#090b0f] p-5 rounded-xl border border-neutral-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-purple-400 font-mono flex items-center space-x-1.5">
+                    <Compass className="w-3.5 h-3.5" />
+                    <span>Cognitive Architecture Hierarchy: Context vs. Memory vs. Principle</span>
+                  </span>
+                  <span className="text-[11px] text-neutral-500 font-mono">
+                    Tri-Level Temporal Hierarchy
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                  {/* 1. Context */}
+                  <div className="p-3.5 rounded-lg bg-[#0e1218] border border-neutral-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-teal-300 font-mono">1. Current Context</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-teal-950 border border-teal-800 text-teal-300 font-mono">
+                        Ephemeral (mins)
+                      </span>
+                    </div>
+                    <p className="text-[11.5px] text-neutral-300 font-sans leading-relaxed">
+                      Instantaneous situational awareness (<code className="text-teal-400 font-mono text-[10px]">presentContext</code>, <code className="text-teal-400 font-mono text-[10px]">incomeContext</code>) sourced from real-time telemetry and calendar.
+                    </p>
+                    <div className="text-[10.5px] text-neutral-400 font-mono pt-1 border-t border-neutral-800/80">
+                      Decay: Immediate on state transition.
+                    </div>
+                  </div>
+
+                  {/* 2. Short-Term Memory */}
+                  <div className="p-3.5 rounded-lg bg-[#0e1218] border border-neutral-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-fuchsia-300 font-mono">2. Episodic Memory</span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-fuchsia-950 border border-fuchsia-800 text-fuchsia-300 font-mono">
+                        Episodic (days/weeks)
+                      </span>
+                    </div>
+                    <p className="text-[11.5px] text-neutral-300 font-sans leading-relaxed">
+                      High-signal records (<code className="text-fuchsia-400 font-mono text-[10px]">newToMemory</code>) committed into vector database (e.g. tachycardia anomalies, adherence logs).
+                    </p>
+                    <div className="text-[10.5px] text-neutral-400 font-mono pt-1 border-t border-neutral-800/80">
+                      Decay: Logarithmic decay unless reinforced.
+                    </div>
+                  </div>
+
+                  {/* 3. Principles */}
+                  <div className="p-3.5 rounded-lg bg-purple-950/30 border border-purple-700/60 space-y-2 relative overflow-hidden">
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-semibold text-purple-300 font-mono flex items-center space-x-1">
+                        <Scale className="w-3 h-3 text-purple-400" />
+                        <span>3. Principle Module</span>
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-purple-900 border border-purple-600 text-purple-200 font-mono font-bold">
+                        Permanent (t = ∞)
+                      </span>
+                    </div>
+                    <p className="text-[11.5px] text-neutral-200 font-sans leading-relaxed">
+                      Compressed long-term invariants distilled from history. <strong className="text-white">Never disappears</strong>; continuously acts like a default context conditioning all memories and current contexts.
+                    </p>
+                    <div className="text-[10.5px] text-purple-300 font-mono pt-1 border-t border-purple-900/60">
+                      Influence: Global governor across all cycles.
+                    </div>
+                  </div>
+                </div>
+
+                {/* Continuous Influence Flow Ribbon */}
+                <div className="p-3 rounded-lg bg-purple-950/20 border border-purple-800/40 text-xs text-neutral-300 flex items-center justify-between flex-wrap gap-2">
+                  <div className="flex items-center space-x-2 font-mono text-[11px]">
+                    <span className="text-purple-400 font-bold">PRINCIPLE INFLUENCE FLOW:</span>
+                    <span className="text-neutral-400">Principle Invariants</span>
+                    <ArrowRight className="w-3.5 h-3.5 text-purple-400" />
+                    <span className="text-teal-300">Conditions Current Context</span>
+                    <span className="text-neutral-600">&amp;</span>
+                    <span className="text-fuchsia-300">Filters Episodic Memory Commits</span>
+                  </div>
+                  <span className="text-[10px] font-mono text-purple-300 bg-purple-900/60 px-2 py-0.5 rounded">
+                    Active Governor at {selectedTime}:00
+                  </span>
+                </div>
+              </div>
+
+              {/* Active Principles Catalog */}
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-white font-mono flex items-center space-x-1.5">
+                    <BookmarkCheck className="w-3.5 h-3.5 text-purple-400" />
+                    <span>Active Enduring Principles ({principlesList.length} Invariants)</span>
+                  </span>
+                  <span className="text-xs text-neutral-400 font-mono">
+                    All principles enforced in compiled StateGraph
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-3.5">
+                  {principlesList.map((prin) => {
+                    const isSelected = selectedPrincipleId === prin.id;
+
+                    return (
+                      <div
+                        key={prin.id}
+                        onClick={() => setSelectedPrincipleId(prin.id)}
+                        className={`p-4 rounded-xl border transition-all cursor-pointer select-none space-y-2.5 ${
+                          isSelected
+                            ? 'bg-purple-950/40 border-purple-500 ring-1 ring-purple-500/50 shadow-md shadow-purple-950/50'
+                            : 'bg-[#0e1218] border-neutral-800 hover:border-neutral-700'
+                        }`}
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="flex items-center space-x-2">
+                            <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-purple-900/80 border border-purple-600 text-purple-200">
+                              {prin.code}
+                            </span>
+                            <span className="text-xs font-mono uppercase px-1.5 py-0.5 rounded bg-neutral-900 border border-neutral-800 text-neutral-400">
+                              {prin.category.replace(/_/g, ' ')}
+                            </span>
+                          </div>
+                          <span className="text-[10.5px] font-mono text-emerald-400 flex items-center space-x-1">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                            <span>{prin.temporalLifespan === 'PERMANENT_DEFAULT' ? 'Permanent' : 'Long-Term'}</span>
+                          </span>
+                        </div>
+
+                        <div>
+                          <h4 className="text-sm font-semibold text-white font-sans">
+                            {prin.title}
+                          </h4>
+                          <p className="text-xs text-neutral-200 font-sans mt-1 leading-relaxed bg-[#07090c] p-2.5 rounded-md border border-neutral-800/80">
+                            "{prin.statement}"
+                          </p>
+                        </div>
+
+                        {/* Distillation Heritage Metadata */}
+                        <div className="text-[11px] font-mono space-y-1 text-neutral-400 pt-1">
+                          <div className="flex items-center justify-between text-neutral-400">
+                            <span className="text-neutral-500">Distillation Origin:</span>
+                            <span className="text-purple-300 font-semibold">{prin.compressionRatio}</span>
+                          </div>
+                          <p className="text-[10.5px] text-neutral-400 font-sans line-clamp-1 italic">
+                            {prin.distilledFrom}
+                          </p>
+                        </div>
+
+                        {/* Influence Targets */}
+                        <div className="pt-2 border-t border-neutral-800/80 flex items-center justify-between text-[10.5px] font-mono">
+                          <div className="flex items-center space-x-1">
+                            <span className="text-neutral-500">Governs:</span>
+                            {prin.influenceTarget.map((tgt) => (
+                              <span
+                                key={tgt}
+                                className="px-1.5 py-0.2 rounded bg-neutral-900 border border-neutral-700 text-neutral-300 text-[9.5px]"
+                              >
+                                {tgt === 'PRESENT_CONTEXT'
+                                  ? 'Context'
+                                  : tgt === 'SHORT_TERM_MEMORY'
+                                  ? 'Memory'
+                                  : 'Dispatch'}
+                              </span>
+                            ))}
+                          </div>
+                          <span className="text-neutral-400">Conf: {(prin.confidenceScore * 100).toFixed(0)}%</span>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'state' && (
             <div className="space-y-5">
               <div className="flex items-center justify-between">
@@ -617,6 +1019,50 @@ homewellness_agent = builder.compile(checkpointer=checkpointer)
                     <div>newToMemory: <strong className="text-fuchsia-300">{currentLog.newToMemory.replace(/\[Simulation\]\s*/gi, '')}</strong></div>
                   </div>
                 </div>
+
+                {/* Principle Engine Channel Card */}
+                <div className="bg-[#0e1218] p-4 rounded-xl border border-purple-900/60 space-y-2 md:col-span-2">
+                  <div className="flex items-center justify-between text-xs text-neutral-400 border-b border-neutral-800/80 pb-1.5">
+                    <span className="text-purple-400 font-semibold flex items-center space-x-1.5">
+                      <Scale className="w-3.5 h-3.5 text-purple-400" />
+                      <span>channel: active_principles</span>
+                    </span>
+                    <span className="text-purple-300 font-mono text-[10px] bg-purple-950 px-2 py-0.5 rounded border border-purple-800 font-bold">
+                      {principlesList.length} INVARIANTS LOADED
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs font-mono text-neutral-300">
+                    <div>activeRules: <strong className="text-purple-300">{principlesList.map((p) => p.code).join(', ')}</strong></div>
+                    <div>memoryFiltration: <strong className="text-emerald-300">TRANSIENT_FILTER_ACTIVE</strong></div>
+                    <div>toneModulation: <strong className="text-sky-300">GENTLE_CONVERSATIONAL</strong></div>
+                    <div>contextDirective: <strong className="text-amber-300">MEAL_PRIORITY_VERIFIED</strong></div>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 font-sans pt-1">
+                    Continuous Invariant: Long-term compressed principles permanently persist across all threads, providing constitutional guidance that conditions every present context and screens all episodic memory commits.
+                  </p>
+                </div>
+
+                {/* Safety Guardrail Channel Card */}
+                <div className="bg-[#0e1218] p-4 rounded-xl border border-emerald-900/60 space-y-2 md:col-span-2">
+                  <div className="flex items-center justify-between text-xs text-neutral-400 border-b border-neutral-800/80 pb-1.5">
+                    <span className="text-emerald-400 font-semibold flex items-center space-x-1.5">
+                      <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                      <span>channel: clinical_guardrail</span>
+                    </span>
+                    <span className="text-emerald-300 font-mono text-[10px] bg-emerald-950 px-2 py-0.5 rounded border border-emerald-800">
+                      SAFETY_POLICY_ENFORCED
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2 text-xs font-mono text-neutral-300">
+                    <div>agentIdentity: <strong className="text-emerald-300">AI_ASSISTANT (NOT_DOCTOR)</strong></div>
+                    <div>medicalDiagnosis: <strong className="text-rose-400">BLOCKED (0%)</strong></div>
+                    <div>medicationAdvice: <strong className="text-rose-400">BLOCKED (0%)</strong></div>
+                    <div>physicianReferral: <strong className={isAbnormal ? 'text-amber-400 font-bold' : 'text-emerald-300'}>{isAbnormal ? 'MANDATED (ACTIVE)' : 'STANDBY'}</strong></div>
+                  </div>
+                  <p className="text-[11px] text-neutral-400 font-sans pt-1">
+                    Constraint Rule: When biometric anomalies are detected, the agent is hard-restricted to reporting factual sensor readings, emergency guidance, and deferring medication decisions or diagnostic causality to a licensed physician.
+                  </p>
+                </div>
               </div>
 
               {/* Complete JSON Payload */}
@@ -629,7 +1075,7 @@ homewellness_agent = builder.compile(checkpointer=checkpointer)
                     {
                       thread_id: 'thread_as70f_continuous',
                       checkpoint_id: `chk_${selectedTime.replace(':', '')}_${currentLog.pid}`,
-                      step_index: 7,
+                      step_index: 8,
                       values: {
                         patient_id: 'AS-70-F',
                         timestamp: currentLog.timestampIso,
@@ -644,6 +1090,21 @@ homewellness_agent = builder.compile(checkpointer=checkpointer)
                           baseline30DayMean: 64.0,
                         },
                         triage_status: currentLog.status.replace(/\[Simulation\]\s*/gi, ''),
+                        principles: {
+                          active_principles: principlesList.map((p) => p.code),
+                          total_invariants: principlesList.length,
+                          memory_filter_active: true,
+                          tone_governance: "GENTLE_CONVERSATIONAL",
+                          influence: "CONTINUOUS_CONDITIONING",
+                        },
+                        guardrail: {
+                          guardrail_active: true,
+                          is_doctor: false,
+                          medical_diagnosis_blocked: true,
+                          medication_advice_blocked: true,
+                          doctor_referral_mandated: isAbnormal,
+                          guardrail_verdict: isAbnormal ? "NON_DOCTOR_BOUNDARY_ENFORCED" : "NOMINAL_SAFETY_PASSED",
+                        },
                         notification: currentLog.notification.replace(/\[Simulation\]\s*/gi, ''),
                         context: {
                           present: currentLog.presentContext.replace(/\[Simulation\]\s*/gi, ''),
@@ -805,16 +1266,24 @@ homewellness_agent = builder.compile(checkpointer=checkpointer)
               </div>
 
               <div className="bg-[#07090c] p-4 rounded-xl border border-neutral-800 text-xs font-mono text-emerald-300 overflow-x-auto leading-relaxed shadow-inner">
-                <pre>{`from typing import TypedDict, Annotated, Literal
+                <pre>{`from typing import TypedDict, Annotated, Literal, List
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
 
-# 1. State Channels Definition
+# 1. State Channels Definition with Principle Governance
 class VitalTelemetry(TypedDict):
     restingHr: int
     hrv: int
     spo2: int
     batteryPct: int
+
+class GuardrailChannel(TypedDict):
+    guardrail_active: bool
+    is_doctor: bool
+    medical_diagnosis_blocked: bool
+    medication_advice_blocked: bool
+    doctor_referral_required: bool
+    guardrail_verdict: str
 
 class HomeWellnessState(TypedDict):
     patient_id: str
@@ -823,6 +1292,9 @@ class HomeWellnessState(TypedDict):
     z_score: float
     triage_status: str
     risk_score: int
+    active_principles: List[str]          # <-- Invariant long-term compressed principles
+    memory_filtration_mask: dict          # <-- Governs short-term memory commits
+    guardrail: GuardrailChannel
     notification: str
     haptic: str
     present_context: str
@@ -836,6 +1308,8 @@ builder = StateGraph(HomeWellnessState)
 builder.add_node("sensor_ingest", sensor_ingest)
 builder.add_node("rolling_analytics", rolling_analytics)
 builder.add_node("clinical_triage", clinical_triage)
+builder.add_node("principle_governor", principle_governor)  # <-- PRINCIPLE MODULE (Long-Term Invariant Guidance)
+builder.add_node("clinical_guardrail", clinical_guardrail)  # <-- SAFETY GUARDRAIL (Agent != Doctor)
 builder.add_node("notification_dispatch", notification_dispatch)
 builder.add_node("context_resolver", context_resolver)
 builder.add_node("session_security", session_security)
@@ -845,14 +1319,16 @@ builder.add_node("memory_graph_sync", memory_graph_sync)
 builder.add_edge(START, "sensor_ingest")
 builder.add_edge("sensor_ingest", "rolling_analytics")
 
-def triage_router(state: HomeWellnessState) -> Literal["clinical_triage", "notification_dispatch"]:
+def triage_router(state: HomeWellnessState) -> Literal["clinical_triage", "principle_governor"]:
     """Conditional Edge: Route to clinical triage if acute z-score spike detected."""
     if state.get("z_score", 0) >= 2.0:
         return "clinical_triage"
-    return "notification_dispatch"
+    return "principle_governor"
 
 builder.add_conditional_edges("rolling_analytics", triage_router)
-builder.add_edge("clinical_triage", "notification_dispatch")
+builder.add_edge("clinical_triage", "principle_governor")
+builder.add_edge("principle_governor", "clinical_guardrail")
+builder.add_edge("clinical_guardrail", "notification_dispatch")
 builder.add_edge("notification_dispatch", "context_resolver")
 builder.add_edge("context_resolver", "session_security")
 builder.add_edge("session_security", "memory_graph_sync")

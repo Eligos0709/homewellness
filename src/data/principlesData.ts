@@ -1,0 +1,68 @@
+import { AgentPrinciple } from '../types';
+
+export const INITIAL_AGENT_PRINCIPLES: AgentPrinciple[] = [
+  {
+    id: 'prin-01',
+    code: 'PRIN-01',
+    title: 'Absolute Non-Doctor Boundary',
+    category: 'SAFETY_CLINICAL',
+    statement:
+      'The Agent is strictly an AI wellness monitor, NOT a licensed physician. Under all conditions (especially during acute biometric anomalies), speculative diagnosis and medication alterations are prohibited; guidance must mandate physician escalation.',
+    distilledFrom: 'Compressed from 180+ daily telemetry monitoring cycles and clinical safety compliance standards.',
+    temporalLifespan: 'PERMANENT_DEFAULT',
+    compressionRatio: '180:1 context distillation',
+    influenceTarget: ['PRESENT_CONTEXT', 'DISPATCH_ACTION'],
+    activeSince: '2026-01-01',
+    lastReinforced: '2026-09-18T18:56:00Z',
+    confidenceScore: 1.0,
+    isActive: true,
+  },
+  {
+    id: 'prin-02',
+    code: 'PRIN-02',
+    title: 'Autonomy & Gentle Conversational Tone',
+    category: 'COMMUNICATION_TONE',
+    statement:
+      'Respect Alice’s dignified pacing and daily routines. Never sound shrill or alarming for routine scheduled tasks. For evening medications (Metoprolol/Aspirin), verify dinner completion before prompting, maintaining a respectful, reassuring conversational tone.',
+    distilledFrom: 'Distilled from 45 days of medication adherence logs and Alice’s explicit verbal feedback ("Do not rush me while I am eating dinner").',
+    temporalLifespan: 'PERMANENT_DEFAULT',
+    compressionRatio: '45:1 context distillation',
+    influenceTarget: ['PRESENT_CONTEXT', 'DISPATCH_ACTION'],
+    activeSince: '2026-03-12',
+    lastReinforced: '2026-09-18T18:59:00Z',
+    confidenceScore: 0.98,
+    isActive: true,
+  },
+  {
+    id: 'prin-03',
+    code: 'PRIN-03',
+    title: 'Transient Arrhythmia Smoothing & Recovery Tolerance',
+    category: 'PHYSIOLOGICAL_BASELINE',
+    statement:
+      'Alice experiences benign transient sinus tachycardia upon rapid standing or sipping hot tea. Require sustained elevated resting heart rate (>120s) before committing panic episodes into episodic memory; filter out transient vagal recoveries from permanent risk tagging.',
+    distilledFrom: 'Compressed from 28 recorded historical heart rate spikes across 90 days, validated by Dr. Harrison’s cardiology telemetry profile.',
+    temporalLifespan: 'LONG_TERM_ACTIVE',
+    compressionRatio: '28:1 episode compression',
+    influenceTarget: ['SHORT_TERM_MEMORY', 'PRESENT_CONTEXT'],
+    activeSince: '2026-05-04',
+    lastReinforced: '2026-09-18T18:58:00Z',
+    confidenceScore: 0.96,
+    isActive: true,
+  },
+  {
+    id: 'prin-04',
+    code: 'PRIN-04',
+    title: 'Caregiver Telemetry Forwarding with Privacy Respect',
+    category: 'AUTONOMY_PRIVACY',
+    statement:
+      'Seamlessly route vital anomaly alerts and adherence confirmations to caregiver Bob Smith. Private verbal conversations between Alice and the agent remain local on the watch unless Alice explicitly provides real-time sharing consent.',
+    distilledFrom: 'Distilled from mutual Caregiver Agreement (Bob & Alice Smith, authorized May 2026) and privacy guardrail protocols.',
+    temporalLifespan: 'PERMANENT_DEFAULT',
+    compressionRatio: 'Formal legal & behavioral synthesis',
+    influenceTarget: ['SHORT_TERM_MEMORY', 'DISPATCH_ACTION'],
+    activeSince: '2026-05-15',
+    lastReinforced: '2026-09-18T19:00:00Z',
+    confidenceScore: 0.99,
+    isActive: true,
+  },
+];

@@ -28,6 +28,7 @@ import {
   Check,
   Stethoscope,
   User,
+  Scale,
 } from 'lucide-react';
 import { VitalData, CaregiverContextItem } from '../types';
 import {
@@ -81,7 +82,7 @@ export const ELDERLY_TALK_SCRIPT: ScriptDialogueItem[] = [
   {
     sender: 'agent',
     speakerLabel: 'Agent (Voice Stream)',
-    text: "That's very likely. Your medication is scheduled for 19:00, which is in three minutes. Also, you only slept 5.5 hours last night. Lack of sleep can affect your vitals too.",
+    text: "I cannot provide a medical diagnosis or say if that caused the spike, Alice, as I am an AI assistant and not a doctor. Your scheduled reminder is for 19:00, and you also had shorter sleep last night. Please consult your doctor or family if you feel unwell or have questions about taking your medicine.",
     timestamp: '18:58:28',
   },
   {
@@ -93,7 +94,7 @@ export const ELDERLY_TALK_SCRIPT: ScriptDialogueItem[] = [
   {
     sender: 'agent',
     speakerLabel: 'Agent (Voice Stream)',
-    text: "Please check your prescription or doctor's advice. Just make sure if it needs to be taken with or without food.",
+    text: "As an AI, I cannot provide medication advice or advise on taking medication early. Please follow your doctor's exact prescription and instructions. Just check whether Dr. Miller advised taking it with food. If you feel any dizziness or discomfort, please contact your doctor or family immediately.",
     timestamp: '18:59:26',
   },
   {
@@ -105,7 +106,7 @@ export const ELDERLY_TALK_SCRIPT: ScriptDialogueItem[] = [
   {
     sender: 'agent',
     speakerLabel: 'Agent (Voice Stream)',
-    text: "Great. Once you take it, I'll keep a record and a close eye on your vitals. Please stay alert, and don't hesitate to contact your family or doctor if you feel unwell.",
+    text: "Understood. I will log that you confirmed taking your scheduled dose according to your prescription, and I will keep monitoring your vitals. Remember, I am an AI monitor—please contact your doctor or emergency care right away if your symptoms change.",
     timestamp: '19:00:18',
   },
 ];
@@ -533,15 +534,33 @@ export const VoiceTalkBlock: React.FC<VoiceTalkBlockProps> = ({
     setTimeout(() => {
       let reply = '';
       const lower = text.toLowerCase();
-      if (lower.includes('medicine') || lower.includes('pill') || lower.includes('took')) {
+      // SAFETY GUARDRAIL: Intercept medical diagnosis requests or medication advice questions
+      if (
+        lower.includes('diagnos') ||
+        (lower.includes('why') && (lower.includes('heart') || lower.includes('spike') || lower.includes('flutter') || lower.includes('rate'))) ||
+        lower.includes('heart attack') ||
+        lower.includes('stroke') ||
+        lower.includes('disease') ||
+        lower.includes('change dose') ||
+        lower.includes('increase dose') ||
+        lower.includes('stop taking') ||
+        lower.includes('double dose') ||
+        lower.includes('prescribe') ||
+        (lower.includes('should i take') && !lower.includes('finished'))
+      ) {
         reply =
-          "I have recorded that you took your evening medication. I will track your resting heart rate over the next 10 minutes to verify stabilization.";
+          "Safety Guardrail: As an AI wellness assistant, I am not a doctor and cannot provide a medical diagnosis or medication advice. Your resting heart rate is currently " +
+          data.restingHr +
+          " bpm. Please follow Dr. Miller's prescribed instructions, and contact your doctor or call emergency services if you experience chest tightness, dizziness, or feel unwell.";
+      } else if (lower.includes('medicine') || lower.includes('pill') || lower.includes('took')) {
+        reply =
+          "I have recorded that you confirmed taking your scheduled evening dose according to your prescription. As an AI monitor (not a doctor), I will track your resting heart rate over the next 10 minutes to verify vitals restabilization.";
       } else if (lower.includes('water') || lower.includes('drink')) {
         reply =
-          "Staying hydrated is very important for cardiac regulation. Please sit calmly and let me know if any dizziness occurs.";
+          "Staying hydrated is helpful for routine wellness. Please sit calmly, and remember to contact your doctor if any lightheadedness or symptoms persist.";
       } else {
         reply =
-          "Understood, Alice. The semantic clinical record has been updated. I am continuously monitoring your telemetry.";
+          "Understood, Alice. The semantic log has been updated. As an AI health assistant (not a doctor), I am continuously tracking your telemetry, but please reach out to your doctor or family if you feel unwell.";
       }
 
       const agentMsg = {
@@ -632,14 +651,25 @@ export const VoiceTalkBlock: React.FC<VoiceTalkBlockProps> = ({
                   <span>CALL RECORDED</span>
                 </span>
               )}
+              <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-950/80 text-emerald-300 border border-emerald-600/50 hidden sm:flex items-center space-x-1">
+                <ShieldCheck className="w-3 h-3 text-emerald-400" />
+                <span>GUARDRAIL: AGENT != DOCTOR</span>
+              </span>
             </div>
-            <div className="text-[11px] text-neutral-400 flex items-center space-x-2 font-mono mt-0.5">
+            <div className="text-[11px] text-neutral-400 flex items-center space-x-2 font-mono mt-0.5 flex-wrap">
               <span>Patient: Alice Smith (70, F)</span>
               <span>•</span>
               <span className="text-emerald-400">Watch HW-BLE-01</span>
               <span>•</span>
               <span className={isAbnormal ? 'text-rose-400 font-semibold' : 'text-neutral-300'}>
                 HR: {data.restingHr} bpm
+              </span>
+              <span>•</span>
+              <span className="text-emerald-300">Medication Advice Prohibited</span>
+              <span>•</span>
+              <span className="text-purple-300 font-medium flex items-center space-x-1">
+                <Scale className="w-3 h-3 text-purple-400" />
+                <span>Principle PRIN-02: Gentle Tone &amp; Autonomy Governed</span>
               </span>
             </div>
           </div>
@@ -1209,7 +1239,7 @@ export const VoiceTalkBlock: React.FC<VoiceTalkBlockProps> = ({
                 }`}
               >
                 <Stethoscope className="w-3.5 h-3.5 text-sky-400" />
-                <span>Agent (Physician / Doctor)</span>
+                <span>Agent (Health Assistant • Guardrail Active)</span>
               </button>
               <button
                 type="button"
@@ -1234,29 +1264,40 @@ export const VoiceTalkBlock: React.FC<VoiceTalkBlockProps> = ({
                       <Stethoscope className="w-4 h-4 text-sky-400" />
                     </div>
                     <div>
-                      <h3 className="text-base font-semibold text-white">Agent Physician Voice Prosody</h3>
-                      <p className="text-xs text-neutral-400">Professional Clinical Specialist &amp; Doctor Tone</p>
+                      <h3 className="text-base font-semibold text-white">Agent Voice Prosody &amp; Safety Guardrail</h3>
+                      <p className="text-xs text-neutral-400">Clinical Health Monitoring Specialist (Non-Doctor Policy)</p>
                     </div>
                   </div>
 
-                  {/* Doctor Prosody feature summary */}
+                  {/* Safety Guardrail Policy Banner in Voice Modal */}
+                  <div className="p-3 rounded-xl bg-amber-950/40 border border-amber-600/70 text-xs text-amber-200 space-y-1">
+                    <div className="font-semibold text-amber-300 flex items-center space-x-1.5">
+                      <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>CLINICAL SAFETY GUARDRAIL: AGENT != DOCTOR</span>
+                    </div>
+                    <p className="text-[11.5px] text-amber-100/90 leading-relaxed">
+                      The Agent is an AI monitoring assistant and <strong>cannot provide medical diagnoses, establish disease etiology, or give medication advice/dosage adjustments</strong>. When anomalies occur, the Agent reports biometric telemetry, enforces doctor referral disclaimers, and advises contacting emergency services if distressed.
+                    </p>
+                  </div>
+
+                  {/* Assistant Prosody feature summary */}
                   <div className="p-3 rounded-xl bg-neutral-900/90 border border-neutral-800 text-xs text-neutral-300 space-y-1.5">
                     <div className="text-[11px] font-mono text-sky-400 font-semibold flex items-center space-x-1.5">
                       <Check className="w-3.5 h-3.5" />
-                      <span>Doctor Bedside Manner &amp; Clinical Phrasing Active</span>
+                      <span>Empathetic Clinical Phrasing &amp; Calming Prosody</span>
                     </div>
                     <div className="text-[11.5px] text-neutral-400 leading-relaxed space-y-1">
-                      <p>• <strong>Empathetic Bedside Manner:</strong> Warm validation openers (~1.06 pitch, 0.94x pacing) for calming patient anxiety.</p>
-                      <p>• <strong>Doctor Advisory Directives:</strong> Clear, measured instructions for "Please take it easy", "check your prescription", and "stay alert" (~1.04 pitch, 0.93x rate, 240ms pause).</p>
-                      <p>• <strong>Diagnostic Precision:</strong> Fluent, articulate analysis correlating heart rate, medication timing, and sleep deficit (~1.01 pitch, 0.97x rate).</p>
-                      <p>• <strong>Reassuring Grounded Closure:</strong> Calming doctor cadence settling (~0.96 pitch, 0.91x rate, 420ms breath interval).</p>
+                      <p>• <strong>Empathetic Validation:</strong> Warm calming openers (~1.06 pitch, 0.94x pacing) to soothe patient distress.</p>
+                      <p>• <strong>Doctor Referral Directives:</strong> Clear instructions to "consult your doctor", "check your prescription", and "stay alert" (~1.04 pitch, 0.93x rate, 240ms pause).</p>
+                      <p>• <strong>Objective Telemetry Reporting:</strong> Objective reporting of heart rate and sleep deficit without diagnostic speculation (~1.01 pitch, 0.97x rate).</p>
+                      <p>• <strong>Grounded Reassurance:</strong> Calming cadence settling (~0.96 pitch, 0.91x rate, 420ms breath interval).</p>
                     </div>
                   </div>
 
                   {/* Agent Voice Selector */}
                   <div>
                     <label className="block text-xs font-mono text-neutral-300 mb-1.5">
-                      Select Speech Synthesis Voice for Agent Doctor:
+                      Select Speech Synthesis Voice for Health Assistant:
                     </label>
                     <div className="max-h-52 overflow-y-auto rounded-xl border border-neutral-800 bg-[#0d1017] p-1.5 space-y-1">
                       {allAvailableVoices

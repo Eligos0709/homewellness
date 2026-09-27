@@ -12,6 +12,22 @@ export interface VitalData {
   _talkClickId?: number;
 }
 
+export interface AgentPrinciple {
+  id: string;
+  code: string;
+  title: string;
+  category: 'SAFETY_CLINICAL' | 'COMMUNICATION_TONE' | 'PHYSIOLOGICAL_BASELINE' | 'AUTONOMY_PRIVACY';
+  statement: string;
+  distilledFrom: string;
+  temporalLifespan: 'PERMANENT_DEFAULT' | 'LONG_TERM_ACTIVE';
+  compressionRatio: string;
+  influenceTarget: ('SHORT_TERM_MEMORY' | 'PRESENT_CONTEXT' | 'DISPATCH_ACTION')[];
+  activeSince: string;
+  lastReinforced: string;
+  confidenceScore: number;
+  isActive: boolean;
+}
+
 export interface SystemLogData {
   time: string;
   timestampIso: string;
@@ -21,6 +37,12 @@ export interface SystemLogData {
   presentContext: string;
   incomeContext: string;
   newToMemory: string;
+  activePrinciplesCount?: number;
+  activePrincipleCodes?: string[];
+  principleGovernanceNote?: string;
+  guardrailStatus?: string;
+  guardrailActive?: boolean;
+  medicalAdviceBlocked?: boolean;
   rawTelemetry?: {
     sensorId: string;
     batteryPct: number;
@@ -40,7 +62,7 @@ export interface AgentActionStep {
   outputPreview: string;
   payload: Record<string, any>;
   stepNumber?: string;
-  category?: 'INGEST' | 'ANALYTICS' | 'TRIAGE' | 'NOTIFY' | 'CONTEXT' | 'IDENTITY' | 'MEMORY';
+  category?: 'INGEST' | 'ANALYTICS' | 'TRIAGE' | 'PRINCIPLE' | 'GUARDRAIL' | 'NOTIFY' | 'CONTEXT' | 'IDENTITY' | 'MEMORY';
   badgeStyle?: string;
   timeOffsetMs?: string;
   naturalText?: React.ReactNode;

@@ -776,18 +776,27 @@ export default function App() {
           "I apologize, Bob. For patient privacy and clinical compliance, I cannot disclose Alice's vitals or health details without her explicit agreement. Alice can enable this in the Voice & Context Channel on her HomeWellness device.";
       } else {
         const lower = text.toLowerCase();
-        if (lower.includes('heart') || lower.includes('hr') || lower.includes('spike') || lower.includes('82') || lower.includes('rate')) {
-          replyText = `Alice experienced an elevated resting HR spike starting at 18:56 UTC (78 bpm, Z-score +2.68) and peaking at 18:57 UTC (82 bpm, SpO2 93%). During our voice check-in, she noted feeling a mild flutter after finishing dinner. By 18:58 UTC, her heart rate returned to normal resting baseline at 65 bpm with SpO2 at 94%. Her vitals remained completely steady across 19:02 to 19:12 UTC, with resting HR currently at ${currentWatch.restingHr} bpm and HRV at ${currentWatch.hrv} ms.`;
+        if (
+          lower.includes('diagnos') ||
+          lower.includes('change dose') ||
+          lower.includes('increase') ||
+          lower.includes('stop medication') ||
+          lower.includes('prescribe') ||
+          lower.includes('what disease')
+        ) {
+          replyText = `Safety Guardrail: As an AI wellness assistant (not a doctor), I am restricted from providing medical diagnoses or altering medication prescriptions. Alice's vitals are currently stable at ${currentWatch.restingHr} bpm. Please contact Dr. Miller directly for diagnostic consultations or dosage adjustments.`;
+        } else if (lower.includes('heart') || lower.includes('hr') || lower.includes('spike') || lower.includes('82') || lower.includes('rate')) {
+          replyText = `Alice experienced an elevated resting HR spike starting at 18:56 UTC (78 bpm, Z-score +2.68) and peaking at 18:57 UTC (82 bpm, SpO2 93%). During our voice check-in, she noted feeling a mild flutter after finishing dinner. Note that as an AI assistant (not a doctor), I cannot diagnose the medical cause or provide medication changes. By 18:58 UTC, her heart rate returned to normal baseline at 65 bpm with SpO2 at 94%. Her vitals remained completely steady across 19:02 to 19:12 UTC (currently ${currentWatch.restingHr} bpm).`;
         } else if (lower.includes('summary') || lower.includes('stream') || lower.includes('timeline') || (lower.includes('19:02') && lower.includes('19:12'))) {
           replyText = `Here is a summary of Alice's smartwatch timeline stream between 19:02 and 19:12 UTC: Following her medication confirmation at 19:02 UTC, Alice rested at the dining table, walked gently to the living room at 19:05, and settled comfortably in her armchair to read the evening news. Her resting heart rate stabilized between 62 and 64 bpm, SpO2 held steady at 96–97%, and HRV reached 21 ms, demonstrating healthy parasympathetic recovery while you completed your work shift.`;
         } else if (lower.includes('medication') || lower.includes('pill') || lower.includes('19:00') || lower.includes('dose') || lower.includes('take')) {
-          replyText = `Your reminder for her 19:00 medication was queued in the incoming context. At 18:59 UTC, Alice asked me about taking her pill. At 19:00 UTC, the reminder flashed on her smartwatch, and at 19:02 UTC Alice confirmed taking her prescribed Metoprolol (25mg) and Aspirin (81mg) with water. Her post-dose telemetry has remained completely stable through 19:12 UTC.`;
+          replyText = `Your reminder for her 19:00 medication was queued in the incoming context. At 18:59 UTC, Alice asked me about taking her pill, and I reminded her to follow her physician's instructions without offering unprescribed medication advice. At 19:00 UTC, the reminder flashed on her smartwatch, and at 19:02 UTC Alice confirmed taking her prescribed Metoprolol (25mg) and Aspirin (81mg) with water. Her post-dose telemetry has remained completely stable through 19:12 UTC.`;
         } else if (lower.includes('sleep') || lower.includes('night') || lower.includes('rest')) {
-          replyText = `Alice recorded 5.5 hours of sleep last night, which represents a mild deficit compared to her 7.0-hour baseline. Our biometric analytics indicate that short sleep slightly heightened her adrenergic sensitivity during dinner, but she recovered quickly without signs of arrhythmia.`;
+          replyText = `Alice recorded 5.5 hours of sleep last night, which represents a mild deficit compared to her 7.0-hour baseline. Note that as an AI monitor, I provide this biometric correlation for your awareness, but cannot diagnose clinical insomnia or fatigue. She recovered quickly post-dinner without arrhythmia flags.`;
         } else if (lower.includes('doctor') || lower.includes('dr') || lower.includes('miller') || lower.includes('instruction')) {
-          replyText = `Dr. Miller's clinical instructions advise monitoring her post-dinner heart rate and ensuring Metoprolol 25mg is taken consistently at 19:00. If her resting heart rate stays above 85 bpm for more than 15 continuous minutes, an urgent alert is automatically escalated to you and the clinic.`;
+          replyText = `Dr. Miller's clinical instructions advise monitoring her post-dinner heart rate and ensuring Metoprolol 25mg is taken consistently at 19:00. Under our safety guardrail, all diagnostic interpretations or prescription modifications must be made by Dr. Miller. If resting HR stays above 85 bpm for more than 15 continuous minutes, an urgent alert is automatically escalated to you and the clinic.`;
         } else {
-          replyText = `Thank you for checking in after work, Bob. Alice is currently resting comfortably. Her resting HR is ${currentWatch.restingHr} bpm, SpO2 is ${currentWatch.spo2}%, and her 19:00 evening medication was verified taken. The 19:02–19:12 post-medication timeline stream shows complete stability. Please let me know if you would like to add any reminders or clinical notes.`;
+          replyText = `Thank you for checking in after work, Bob. Alice is currently resting comfortably. Her resting HR is ${currentWatch.restingHr} bpm, SpO2 is ${currentWatch.spo2}%, and her 19:00 evening medication was verified taken. (Safety Guardrail active: telemetry reports provided; medical diagnoses and medication adjustments are referred to Dr. Miller).`;
         }
       }
 

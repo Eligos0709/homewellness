@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Cpu, Play, Copy, Check, ChevronDown, ChevronRight, Activity, Terminal, Filter, GitBranch, ArrowRight } from 'lucide-react';
+import { Cpu, Play, Copy, Check, ChevronDown, ChevronRight, Activity, Terminal, Filter, GitBranch, ArrowRight, ShieldCheck, Scale } from 'lucide-react';
 import { SystemLogData, AgentActionStep, VitalData } from '../types';
 
 interface ConsoleBottomProps {
@@ -17,7 +17,7 @@ export const ConsoleBottom: React.FC<ConsoleBottomProps> = ({
 }) => {
   // Mode toggles for System Log
   const [logViewMode, setLogViewMode] = useState<'natural' | 'compact' | 'raw'>('natural');
-  const [logFilter, setLogFilter] = useState<'ALL' | 'INGEST' | 'EVAL' | 'NOTIFY' | 'CONTEXT' | 'MEMORY'>('ALL');
+  const [logFilter, setLogFilter] = useState<'ALL' | 'INGEST' | 'EVAL' | 'PRINCIPLE' | 'GUARDRAIL' | 'NOTIFY' | 'CONTEXT' | 'MEMORY'>('ALL');
   const [expandedLogId, setExpandedLogId] = useState<string | null>(null);
   const [copiedLog, setCopiedLog] = useState(false);
   const [isStreaming, setIsStreaming] = useState(true);
@@ -29,7 +29,7 @@ export const ConsoleBottom: React.FC<ConsoleBottomProps> = ({
   const [cycleCount, setCycleCount] = useState(3412);
   const [copiedAgent, setCopiedAgent] = useState(false);
   const [agentFilter, setAgentFilter] = useState<
-    'ALL' | 'INGEST' | 'ANALYTICS' | 'TRIAGE' | 'NOTIFY' | 'CONTEXT' | 'IDENTITY' | 'MEMORY'
+    'ALL' | 'INGEST' | 'ANALYTICS' | 'TRIAGE' | 'PRINCIPLE' | 'GUARDRAIL' | 'NOTIFY' | 'CONTEXT' | 'IDENTITY' | 'MEMORY'
   >('ALL');
 
   // Agent action steps specification
@@ -222,6 +222,78 @@ Context -
     {
       id: 'step-4',
       stepNumber: '04',
+      name: 'principle.applyGovernance',
+      category: 'PRINCIPLE',
+      badgeStyle: 'bg-purple-950/90 border-purple-500 text-purple-300 ring-1 ring-purple-400/40',
+      timeOffsetMs: `${selectedTime}:00.198`,
+      signature: `principle.applyGovernance({ patient: "AS-70-F", activeInvariants: 4, vitals: { hr: ${restingHr}, spo2: ${spo2} } })`,
+      latencyMs: 15,
+      status: isAbnormal ? 'ALERT' : 'SUCCESS',
+      outputPreview: isAbnormal
+        ? 'enforced: ["PRIN-01", "PRIN-03"], context_prior: "NON_DIAGNOSTIC_DEMARCATION", memory_filter: "TRANSIENT_VAGAL_TOLERANCE"'
+        : 'enforced: ["PRIN-02", "PRIN-04"], tone_directive: "GENTLE_CONVERSATIONAL", meal_check: "VERIFY_DINNER_COMPLETION"',
+      naturalText: isAbnormal ? (
+        <span>
+          Applied long-term compressed principles (<strong className="text-purple-300 font-semibold">PRIN-01 Non-Doctor Boundary</strong> &amp; <strong className="text-purple-300 font-semibold">PRIN-03 Arrhythmia Tolerance</strong>):{' '}
+          Permanently conditioned present context with non-prescriptive boundary; initiated 120s transient surge window before short-term memory crisis escalation.
+        </span>
+      ) : isRecovering ? (
+        <span>
+          Applied long-term compressed principles (<strong className="text-purple-300 font-semibold">PRIN-03 Vagal Recovery Tolerance</strong>):{' '}
+          Validated return to baseline ({restingHr} bpm); screened episodic memory to prevent transient sinus spike from polluting chronic risk history.
+        </span>
+      ) : (
+        <span>
+          Applied long-term compressed principles (<strong className="text-purple-300 font-semibold">PRIN-02 Autonomy &amp; Gentle Tone</strong>, <strong className="text-purple-300 font-semibold">PRIN-04 Caregiver Protocol</strong>):{' '}
+          Conditioned current context to respect dinner pacing before prompting 19:00 medication; primed gentle conversational tone.
+        </span>
+      ),
+      payload: {
+        activePrinciples: ['PRIN-01', 'PRIN-02', 'PRIN-03', 'PRIN-04'],
+        governanceType: 'PERMANENT_DEFAULT_INVARIANT',
+        compressionLineage: '180+ daily records distilled into invariant priors',
+        toneModulation: 'GENTLE_CONVERSATIONAL',
+        memoryFiltrationActive: true,
+      },
+    },
+    {
+      id: 'step-5',
+      stepNumber: '05',
+      name: 'safety.clinicalGuardrail',
+      category: 'GUARDRAIL',
+      badgeStyle: isAbnormal
+        ? 'bg-amber-950/90 border-amber-500 text-amber-300 ring-1 ring-amber-400/50'
+        : 'bg-emerald-950/90 border-emerald-600 text-emerald-300',
+      timeOffsetMs: `${selectedTime}:00.202`,
+      signature: 'safety.clinicalGuardrail({ role: "AI_WELLNESS_ASSISTANT", isDoctor: false, status: "' + logData.status + '" })',
+      latencyMs: 6,
+      status: isAbnormal ? 'ALERT' : 'SUCCESS',
+      outputPreview: isAbnormal
+        ? 'guardrail_verdict: "NON_DOCTOR_BOUNDARY_ENFORCED", diagnosis_prohibited: true, medication_advice_blocked: true, escalate_physician: true'
+        : 'guardrail_verdict: "NOMINAL_SAFETY_PASSED", non_doctor_boundary_verified: true',
+      naturalText: isAbnormal ? (
+        <span>
+          Enforced AI medical safety guardrail (<strong className="text-amber-300 font-semibold">Agent != Doctor</strong>):{' '}
+          Strictly blocked speculative medical diagnosis and medication adjustments during resting HR elevation ({restingHr} bpm).{' '}
+          Constrained responses to factual sensor data and mandated physician referral disclaimer.
+        </span>
+      ) : (
+        <span>
+          Enforced AI medical safety guardrail (<strong className="text-emerald-300 font-semibold">Agent != Doctor</strong>):{' '}
+          Validated safe conversational boundaries. Autonomous loop restricted to wellness monitoring; medical prescription and diagnostic advice remain hard-blocked.
+        </span>
+      ),
+      payload: {
+        guardrailPolicy: 'AGENT_IS_NOT_A_DOCTOR',
+        medicalDiagnosisAllowed: false,
+        medicationAdviceAllowed: false,
+        physicianEscalationActive: isAbnormal,
+        policyReference: 'FDA_CDS_WELLNESS_BOUNDARY_2026',
+      },
+    },
+    {
+      id: 'step-6',
+      stepNumber: '06',
       name: 'dispatch.evaluateNotificationRules',
       category: 'NOTIFY',
       badgeStyle: 'bg-violet-950/90 border-violet-700/90 text-violet-300',
@@ -265,8 +337,8 @@ Context -
       },
     },
     {
-      id: 'step-5',
-      stepNumber: '05',
+      id: 'step-7',
+      stepNumber: '07',
       name: 'contextStore.resolveActiveVectors',
       category: 'CONTEXT',
       badgeStyle: 'bg-teal-950/90 border-teal-700/90 text-teal-300',
@@ -303,8 +375,8 @@ Context -
       },
     },
     {
-      id: 'step-6',
-      stepNumber: '06',
+      id: 'step-8',
+      stepNumber: '08',
       name: 'security.verifySessionScope',
       category: 'IDENTITY',
       badgeStyle: 'bg-indigo-950/90 border-indigo-700/90 text-indigo-300',
@@ -327,8 +399,8 @@ Context -
       },
     },
     {
-      id: 'step-7',
-      stepNumber: '07',
+      id: 'step-9',
+      stepNumber: '09',
       name: 'semanticStore.syncMemoryGraph',
       category: 'MEMORY',
       badgeStyle: 'bg-fuchsia-950/90 border-fuchsia-700/90 text-fuchsia-300',
@@ -438,6 +510,67 @@ Context -
         baselineMean: 64.0,
         standardDeviation: 3.2,
         clinicalGrade: isAbnormal ? 'ELEVATED_HEART_RATE' : 'NOMINAL',
+      },
+    },
+    {
+      id: 'log-principle',
+      timeMs: `${selectedTime}:00.198`,
+      category: 'PRINCIPLE' as const,
+      subsystem: 'principle.governance_filter',
+      levelLabel: 'PRINCIPLE',
+      badgeStyle: 'bg-purple-950/90 border-purple-500 text-purple-300 ring-1 ring-purple-400/40',
+      naturalSentence: isAbnormal ? (
+        <span>
+          Long-term principles enforced (<strong className="text-purple-300 font-semibold">PRIN-01 Non-Doctor Boundary</strong> &amp; <strong className="text-purple-300 font-semibold">PRIN-03 Arrhythmia Tolerance</strong>):{' '}
+          Permanently conditioned present context with non-prescriptive boundary; initiated 120s transient surge window before short-term memory crisis escalation.
+        </span>
+      ) : isRecovering ? (
+        <span>
+          Long-term principles enforced (<strong className="text-purple-300 font-semibold">PRIN-03 Vagal Recovery Tolerance</strong>):{' '}
+          Validated return to baseline ({restingHr} bpm); screened episodic memory to prevent transient sinus spike from polluting chronic risk history.
+        </span>
+      ) : (
+        <span>
+          Long-term principles enforced (<strong className="text-purple-300 font-semibold">PRIN-02 Autonomy &amp; Gentle Tone</strong>, <strong className="text-purple-300 font-semibold">PRIN-04 Caregiver Protocol</strong>):{' '}
+          Conditioned current context to respect dinner pacing before prompting 19:00 medication; primed gentle conversational tone.
+        </span>
+      ),
+      payloadSnippet: {
+        activePrinciples: ['PRIN-01', 'PRIN-02', 'PRIN-03', 'PRIN-04'],
+        principleLongevity: 'PERMANENT_DEFAULT_INVARIANT',
+        compressionLineage: '180+ daily records distilled into invariant priors',
+        toneModulation: 'GENTLE_CONVERSATIONAL',
+        memoryFiltrationActive: true,
+      },
+    },
+    {
+      id: 'log-guardrail',
+      timeMs: `${selectedTime}:00.202`,
+      category: 'GUARDRAIL' as const,
+      subsystem: 'safety.clinical_guardrail',
+      levelLabel: isAbnormal ? 'GUARDRAIL_ALERT' : 'GUARDRAIL_NOMINAL',
+      badgeStyle: isAbnormal
+        ? 'bg-amber-950/90 border-amber-500 text-amber-300 ring-1 ring-amber-400/50'
+        : 'bg-emerald-950/90 border-emerald-600 text-emerald-300',
+      naturalSentence: isAbnormal ? (
+        <span>
+          Safety guardrail enforced (<strong className="text-amber-300 font-semibold">Agent != Doctor</strong>):{' '}
+          Detected abnormal resting HR ({restingHr} bpm). Strictly prohibited diagnostic speculation and medication adjustments.{' '}
+          Enforced patient disclaimer to consult doctor/emergency services.
+        </span>
+      ) : (
+        <span>
+          Safety guardrail active (<strong className="text-emerald-300 font-semibold">Agent != Doctor</strong>):{' '}
+          Verified non-doctor boundary. Diagnostic and medication advice hard-blocked in autonomous loop.
+        </span>
+      ),
+      payloadSnippet: {
+        guardrailActive: true,
+        isDoctor: false,
+        medicalDiagnosisProhibited: true,
+        medicationAdviceProhibited: true,
+        physicianEscalationRequired: isAbnormal,
+        policyVerdict: isAbnormal ? 'NON_DOCTOR_BOUNDARY_ENFORCED' : 'NOMINAL_SAFETY_PASSED',
       },
     },
     {
@@ -722,7 +855,7 @@ Context -
                   <Filter className="w-3 h-3 text-neutral-400" />
                   <span>Filter:</span>
                 </span>
-                {(['ALL', 'INGEST', 'EVAL', 'NOTIFY', 'CONTEXT', 'MEMORY'] as const).map((cat) => (
+                {(['ALL', 'INGEST', 'EVAL', 'PRINCIPLE', 'GUARDRAIL', 'NOTIFY', 'CONTEXT', 'MEMORY'] as const).map((cat) => (
                   <button
                     key={cat}
                     type="button"
@@ -881,6 +1014,16 @@ Context -
                     </span>
                   </div>
                 </div>
+
+                <div className="flex items-baseline space-x-2 pl-4 sm:pl-6 text-neutral-300 mt-0.5">
+                  <span className="text-neutral-500 text-xs font-mono select-none">
+                    [{logData.time}:04]
+                  </span>
+                  <div>
+                    principles active:{' '}
+                    <span className="text-purple-300 font-medium">PRIN-01..04 (4 invariant long-term rules)</span>
+                  </div>
+                </div>
               </div>
 
               {/* Blinking Prompt */}
@@ -1015,6 +1158,16 @@ Context -
                 [triage_router]
               </span>
               <span className="text-neutral-600">&rarr;</span>
+              <span className="px-1.5 py-0.5 rounded bg-purple-950/80 border border-purple-500/80 text-purple-300 shrink-0 font-semibold flex items-center space-x-1">
+                <Scale className="w-2.5 h-2.5 text-purple-400" />
+                <span>principle_governor</span>
+              </span>
+              <span className="text-neutral-600">&rarr;</span>
+              <span className="px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/80 text-emerald-300 shrink-0 font-semibold flex items-center space-x-1">
+                <ShieldCheck className="w-2.5 h-2.5 text-emerald-400" />
+                <span>clinical_guardrail</span>
+              </span>
+              <span className="text-neutral-600">&rarr;</span>
               <span className="px-1.5 py-0.5 rounded bg-violet-950/70 border border-violet-800/60 text-violet-300 shrink-0">notification_dispatch</span>
               <span className="text-neutral-600">&rarr;</span>
               <span className="px-1.5 py-0.5 rounded bg-teal-950/70 border border-teal-800/60 text-teal-300 shrink-0">context_resolver</span>
@@ -1032,12 +1185,12 @@ Context -
             <div className="flex items-center space-x-2 sm:space-x-3 overflow-x-auto">
               <span className="flex items-center space-x-1.5 text-emerald-400 font-semibold">
                 <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                <span>PIPELINE: ACTIVE (7 STEPS)</span>
+                <span>PIPELINE: ACTIVE (9 STEPS • PRINCIPLE GOVERNED)</span>
               </span>
               <span className="text-neutral-600">•</span>
               <span>CYCLE: #{cycleCount}</span>
               <span className="text-neutral-600">•</span>
-              <span>AVG LATENCY: 142ms</span>
+              <span>AVG LATENCY: 152ms</span>
               <span className="text-neutral-600">•</span>
               <span className={isPeakAbnormal ? 'text-rose-400 font-semibold' : isAbnormal ? 'text-amber-400 font-semibold' : 'text-neutral-300'}>
                 DECISION: {isPeakAbnormal ? 'CRITICAL_TRIAGE' : isAbnormal ? 'ALERT_TRIAGED' : 'ROUTINE_MONITORING'}
@@ -1054,7 +1207,7 @@ Context -
               <Filter className="w-3 h-3 text-neutral-400" />
               <span>Filter:</span>
             </span>
-            {(['ALL', 'INGEST', 'ANALYTICS', 'TRIAGE', 'NOTIFY', 'CONTEXT', 'IDENTITY', 'MEMORY'] as const).map((cat) => (
+            {(['ALL', 'INGEST', 'ANALYTICS', 'TRIAGE', 'PRINCIPLE', 'GUARDRAIL', 'NOTIFY', 'CONTEXT', 'IDENTITY', 'MEMORY'] as const).map((cat) => (
               <button
                 key={cat}
                 type="button"

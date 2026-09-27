@@ -209,6 +209,25 @@ export const BobCaregiverView: React.FC<BobCaregiverViewProps> = ({
         </div>
       </div>
 
+      {/* Clinical Safety Guardrail Policy Banner for Caregiver */}
+      <div
+        id="caregiver-guardrail-banner"
+        className="bg-emerald-950/10 border border-emerald-600/40 rounded-xl px-4 py-2.5 text-xs flex flex-wrap items-center justify-between gap-2.5 shadow-xs"
+      >
+        <div className="flex items-center space-x-2.5">
+          <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
+          <span className="font-semibold text-emerald-950">
+            Clinical Safety Guardrail Active (Agent != Doctor Policy):
+          </span>
+          <span className="text-neutral-700 text-[11.5px]">
+            The Agent reports biometric sensor telemetry only. As an AI wellness assistant, medical diagnosis and medication prescription adjustments are strictly prohibited and deflected to Alice's licensed physician.
+          </span>
+        </div>
+        <span className="px-2 py-0.5 rounded bg-emerald-100 text-emerald-800 text-[10px] font-mono font-bold border border-emerald-300 shrink-0">
+          GUARDRAIL ENFORCED
+        </span>
+      </div>
+
       {/* 2. Patient Telemetry Snapshot Card (Alice's Current Status) */}
       <div className="bg-neutral-900 text-white rounded-2xl p-4 sm:p-5 border border-neutral-800 shadow-sm flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center space-x-3">

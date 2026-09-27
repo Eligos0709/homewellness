@@ -312,11 +312,11 @@ export const buildProsodicSegments = (
         let pitch = 1.01;
         let pauseAfterMs = 200;
 
-        // 1. Bedside manner & empathetic acknowledgment opener
-        // e.g. "Great.", "That's very likely.", "Understood, Alice.", "Good evening, Alice."
+        // 1. Bedside manner & empathetic acknowledgment opener / Guardrail opener
+        // e.g. "Great.", "Understood, Alice.", "I cannot provide...", "As an AI..."
         const isBedsideOpener =
           isFirstClause &&
-          /^(great|that's very likely|understood|good evening|hello|certainly|indeed|i see)/i.test(
+          /^(great|that's very likely|understood|good evening|hello|certainly|indeed|i see|i cannot provide|as an ai)/i.test(
             clauseText
           );
 
