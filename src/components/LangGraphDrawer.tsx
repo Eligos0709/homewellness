@@ -32,9 +32,13 @@ import {
   Compass,
   Sliders,
   Zap,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from 'lucide-react';
 import { SystemLogData, VitalData, AgentPrinciple } from '../types';
 import { INITIAL_AGENT_PRINCIPLES } from '../data/principlesData';
+import { generateTimeSeriesData, formatSlope, getTrajectoryBadge } from '../data/timeSeriesHelper';
 
 interface LangGraphDrawerProps {
   isOpen: boolean;
@@ -62,7 +66,7 @@ export const LangGraphDrawer: React.FC<LangGraphDrawerProps> = ({
   selectedWatch,
   selectedTime,
 }) => {
-  const [activeTab, setActiveTab] = useState<'graph' | 'principles' | 'state' | 'context_memory' | 'code'>('graph');
+  const [activeTab, setActiveTab] = useState<'graph' | 'model_basis' | 'principles' | 'state' | 'context_memory' | 'code'>('graph');
   const [selectedNodeId, setSelectedNodeId] = useState<string>('principle_governor');
   const [isRunningFlow, setIsRunningFlow] = useState(false);
   const [activeExecutingNode, setActiveExecutingNode] = useState<string | null>(null);
@@ -80,42 +84,55 @@ export const LangGraphDrawer: React.FC<LangGraphDrawerProps> = ({
   const isPeak = selectedTime === '18:57';
   const isRecovering = selectedTime === '18:58';
 
+  const tsMetrics = selectedWatch.timeSeries || generateTimeSeriesData(selectedTime, selectedWatch.restingHr, selectedWatch.spo2, selectedWatch.hrv);
+
   const graphNodes: GraphNodeInfo[] = [
     {
       id: 'sensor_ingest',
       label: 'sensor_ingest',
       category: 'INGEST',
-      description: 'Ingests BLE 25Hz streaming biometric packet from hardware watch sensor.',
+      description: 'Ingests continuous 25Hz streaming time-series buffer (30 continuous samples, SNR 28.4 dB) from hardware watch sensor.',
       inputs: ['__start__.telemetry_stream'],
-      outputs: ['state.vitals', 'state.hardware_health'],
+      outputs: ['state.time_series', 'state.vitals', 'state.hardware_health'],
       latency: 14,
       snippet: `async def sensor_ingest(state: HomeWellnessState) -> dict:
-    packet = await ble_client.read_characteristics("0x2A37")
-    return {"vitals": packet.vitals, "sensor_rssi": packet.rssi}`,
+    # Continuous Time-Series Sampling (25Hz hardware, 30s sliding buffer)
+    packet = await ble_client.read_timeseries_buffer(window_sec=30, rate_hz=25)
+    return {"time_series": packet.time_series_buffer, "vitals": packet.latest, "sensor_rssi": packet.rssi}`,
     },
     {
       id: 'rolling_analytics',
       label: 'rolling_analytics',
       category: 'ANALYTICS',
-      description: 'Computes statistical variance, 30-day baseline moving averages, and z-score.',
-      inputs: ['state.vitals'],
-      outputs: ['state.baseline_delta', 'state.z_score'],
+      description: 'Extracts temporal derivatives over 30s sliding window: trend velocity d(bpm)/dt, rolling EWMA, variance, and anomaly persistence.',
+      inputs: ['state.time_series'],
+      outputs: ['state.trend_slope', 'state.rolling_mean_hr', 'state.rolling_std_dev', 'state.anomaly_persistence_sec', 'state.z_score'],
       latency: 38,
       snippet: `async def rolling_analytics(state: HomeWellnessState) -> dict:
-    delta = state["vitals"]["restingHr"] - 64.0
-    z_score = delta / 3.2
-    return {"delta_bpm": delta, "z_score": z_score}`,
+    ts = state["time_series"]
+    trend_slope = compute_slope_bpm_per_min(ts.window_points)  # d(bpm)/dt
+    rolling_ewma = compute_ewma(ts.window_points, alpha=0.2)
+    rolling_variance = compute_variance(ts.window_points)
+    persistence_sec = compute_anomaly_persistence(ts.window_points, threshold_z=2.5)
+    return {
+        "trend_slope": trend_slope,
+        "rolling_mean_hr": rolling_ewma,
+        "rolling_std_dev": rolling_variance ** 0.5,
+        "anomaly_persistence_sec": persistence_sec,
+        "z_score": (rolling_ewma - 64.0) / 3.2,
+    }`,
     },
     {
       id: 'triage_router',
       label: 'triage_router',
       category: 'ROUTER',
-      description: 'Conditional router node evaluating biometric thresholds to branch pipeline.',
-      inputs: ['state.z_score', 'state.baseline_delta'],
+      description: 'Temporal trajectory router: evaluates anomaly persistence (>=20s) and positive velocity to filter motion artifacts.',
+      inputs: ['state.trend_slope', 'state.anomaly_persistence_sec', 'state.z_score'],
       outputs: ['branch: escalate_critical | route_nominal'],
       latency: 12,
       snippet: `def triage_router(state: HomeWellnessState) -> str:
-    if state["z_score"] >= 2.5:
+    # Temporal Model Basis: verifies anomaly persistence >= 20s before escalating
+    if state["anomaly_persistence_sec"] >= 20 and state["trend_slope"] > 3.0:
         return "escalate_critical"
     return "route_nominal"`,
     },
@@ -123,28 +140,30 @@ export const LangGraphDrawer: React.FC<LangGraphDrawerProps> = ({
       id: 'clinical_triage',
       label: 'clinical_triage',
       category: 'TRIAGE',
-      description: 'Clinical priority classifier and biometric risk scoring engine.',
-      inputs: ['state.z_score', 'state.vitals'],
-      outputs: ['state.triage_status', 'state.risk_score'],
+      description: 'Multi-variate trajectory classifier correlating HR slope, SpO2 desaturation lag, and HRV suppression.',
+      inputs: ['state.trend_slope', 'state.anomaly_persistence_sec', 'state.vitals'],
+      outputs: ['state.trajectory_state', 'state.triage_status', 'state.risk_score'],
       latency: 16,
       snippet: `async def clinical_triage(state: HomeWellnessState) -> dict:
-    verdict = "HR abnormal" if state["z_score"] > 2.0 else "normal"
-    return {"triage_status": verdict, "risk_score": 72 if verdict != "normal" else 12}`,
+    # Phase trajectory classification (ACUTE_ASCENT vs SUSTAINED_PEAK vs VAGAL_DESCENT)
+    trajectory = classify_phase_trajectory(state["trend_slope"], state["anomaly_persistence_sec"])
+    verdict = "HR abnormal" if state["anomaly_persistence_sec"] >= 20 else "normal"
+    return {"trajectory_state": trajectory, "triage_status": verdict, "risk_score": 72 if verdict != "normal" else 12}`,
     },
     {
       id: 'principle_governor',
       label: 'principle_governor',
       category: 'PRINCIPLE',
-      description: 'LONG-TERM PRINCIPLE ENGINE: Compresses long-term records into enduring principles that continuously condition short-term memories and real-time situational contexts.',
-      inputs: ['state.triage_status', 'state.vitals', 'storage.principles_registry'],
+      description: 'LONG-TERM PRINCIPLE ENGINE: Applies 120s transient vagal surge window on time-series trajectories to condition short-term memory and real-time context.',
+      inputs: ['state.trajectory_state', 'state.anomaly_persistence_sec', 'state.vitals', 'storage.principles_registry'],
       outputs: ['state.active_principles', 'state.memory_filtration_mask', 'state.context_prior'],
       latency: 15,
       snippet: `async def principle_governor(state: HomeWellnessState) -> dict:
     """Evaluate enduring principles (PRIN-01..04) compressed from historical records.
-    Unlike ephemeral contexts, Principles never decay and continuously shape memory & context."""
+    PRIN-03 enforces the 120s transient surge tolerance window on time-series trajectories."""
     principles = await principle_registry.get_active(user_id=state["patient_id"])
     context_prior = principles.compute_context_directive(state["vitals"])
-    memory_mask = principles.compute_memory_commit_filter(state["triage_status"])
+    memory_mask = principles.compute_temporal_persistence_filter(state["anomaly_persistence_sec"])
     return {
         "active_principles": [p.code for p in principles],
         "context_prior": context_prior,
@@ -296,10 +315,29 @@ export const LangGraphDrawer: React.FC<LangGraphDrawerProps> = ({
   };
 
   const handleCopyCode = () => {
-    const code = `# HomeWellness Continuous Health Loop - LangGraph StateGraph Definition with Principle Engine
+    const code = `# HomeWellness Continuous Health Loop - LangGraph StateGraph Definition with Principle Engine & Time-Series Model Basis
 from typing import TypedDict, Annotated, Literal, List
 from langgraph.graph import StateGraph, START, END
 from langgraph.checkpoint.memory import MemorySaver
+
+class TimeSeriesPoint(TypedDict):
+    offset_sec: int
+    timestamp: str
+    hr: int
+    spo2: int
+    hrv: int
+    ppg_pulse_amp: float
+
+class TimeSeriesBuffer(TypedDict):
+    sampling_rate_hz: int           # 25Hz hardware sampling
+    window_duration_sec: int        # 30s evaluation window
+    trend_slope_bpm_per_min: float  # Velocity d(bpm)/dt
+    trend_direction: str            # 'RISING_STEEP' | 'PEAK_PLATEAU' | 'FALLING_RECOVERY' | 'STABLE_FLAT'
+    rolling_mean_hr: float          # Sliding EWMA
+    rolling_std_dev: float          # Temporal variance
+    trajectory_state: str           # 'ACUTE_ASCENT' | 'SUSTAINED_PEAK' | 'VAGAL_DESCENT' | 'CIRCADIAN_STABLE'
+    anomaly_persistence_sec: int    # Continuous seconds above threshold
+    window_points: List[TimeSeriesPoint]
 
 class VitalTelemetry(TypedDict):
     restingHr: int
@@ -317,13 +355,17 @@ class GuardrailChannel(TypedDict):
 
 class HomeWellnessState(TypedDict):
     patient_id: str
+    time_series: TimeSeriesBuffer         # <-- Continuous time-series evaluation buffer
     vitals: VitalTelemetry
+    trend_slope: float
+    trajectory_state: str
+    anomaly_persistence_sec: int
     delta_bpm: float
     z_score: float
     triage_status: str
     risk_score: int
     active_principles: List[str]          # <-- Invariant long-term compressed principles
-    memory_filtration_mask: dict          # <-- Governs short-term memory commits
+    memory_filtration_mask: dict          # <-- Governs short-term memory commits (120s vagal window)
     guardrail: GuardrailChannel
     notification: str
     haptic: str
@@ -334,7 +376,7 @@ class HomeWellnessState(TypedDict):
 # 1. Instantiate Graph
 builder = StateGraph(HomeWellnessState)
 
-# 2. Register Processing Nodes
+# 2. Register Processing Nodes (Time-Series Sequence Model Basis)
 builder.add_node("sensor_ingest", sensor_ingest)
 builder.add_node("rolling_analytics", rolling_analytics)
 builder.add_node("clinical_triage", clinical_triage)
@@ -350,7 +392,8 @@ builder.add_edge(START, "sensor_ingest")
 builder.add_edge("sensor_ingest", "rolling_analytics")
 
 def triage_router(state: HomeWellnessState) -> Literal["clinical_triage", "principle_governor"]:
-    if state.get("z_score", 0) >= 2.0:
+    # Temporal Model Basis: verifies anomaly persistence >= 20s before escalating
+    if state.get("anomaly_persistence_sec", 0) >= 20 and state.get("trend_slope", 0) > 3.0:
         return "clinical_triage"
     return "principle_governor"
 
@@ -471,6 +514,18 @@ homewellness_agent = builder.compile(checkpointer=checkpointer)
           >
             <Layers className="w-3.5 h-3.5" />
             <span>StateGraph Visualizer</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setActiveTab('model_basis')}
+            className={`py-2.5 px-3 border-b-2 text-xs font-sans font-medium flex items-center space-x-2 transition cursor-pointer whitespace-nowrap ${
+              activeTab === 'model_basis'
+                ? 'border-cyan-400 text-cyan-300 font-semibold'
+                : 'border-transparent text-neutral-400 hover:text-white'
+            }`}
+          >
+            <Activity className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Time-Series Model Basis</span>
           </button>
           <button
             type="button"
@@ -743,6 +798,261 @@ homewellness_agent = builder.compile(checkpointer=checkpointer)
             </div>
           )}
 
+          {activeTab === 'model_basis' && (
+            <div className="space-y-6">
+              {/* Header Title */}
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-neutral-800 pb-4">
+                <div>
+                  <div className="flex items-center space-x-2">
+                    <div className="w-7 h-7 rounded-md bg-cyan-950/80 border border-cyan-600/70 flex items-center justify-center text-cyan-400">
+                      <Activity className="w-4 h-4" />
+                    </div>
+                    <h3 className="text-base sm:text-lg font-semibold text-white font-sans">
+                      Time-Series Model Basis: Continuous Physiological Sequences
+                    </h3>
+                  </div>
+                  <p className="text-xs text-neutral-400 mt-1 font-sans leading-relaxed">
+                    HomeWellness data attributes are continuous <strong className="text-cyan-300">time-series sequences</strong>, not static scalar numbers. The AI agent operates on sliding evaluation windows, first-order velocity derivatives <code className="text-cyan-300 font-mono">d(bpm)/dt</code>, and anomaly persistence thresholds.
+                  </p>
+                </div>
+
+                <div className="flex items-center space-x-2 shrink-0">
+                  <span className="px-2.5 py-1 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 text-xs font-mono font-bold">
+                    25Hz PPG • 30s SLIDING WINDOW
+                  </span>
+                </div>
+              </div>
+
+              {/* Architectural Paradigm Comparison Card */}
+              <div className="bg-[#090b0f] p-5 rounded-xl border border-neutral-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-cyan-400 font-mono flex items-center space-x-1.5">
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Paradigm Shift: Point-in-Time Scalar vs. Temporal Sequence Model Basis</span>
+                  </span>
+                  <span className="text-[11px] text-neutral-500 font-mono">
+                    Model Foundation
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Left: Naive Point-in-Time Scalar */}
+                  <div className="p-4 rounded-xl bg-[#0e1218] border border-neutral-800 space-y-2.5">
+                    <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+                      <span className="text-rose-400 font-semibold text-xs font-mono uppercase">
+                        Naive Point-in-Time Scalar Model
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-rose-950/80 text-rose-300 border border-rose-800">
+                        FRAGILE / NOISY
+                      </span>
+                    </div>
+
+                    <ul className="text-xs space-y-2 text-neutral-300 font-sans">
+                      <li className="flex items-start space-x-2">
+                        <span className="text-rose-400 font-bold shrink-0">&bull;</span>
+                        <span>
+                          <strong>Single-Token Thresholding:</strong> Evaluates isolated scalar values like <code className="text-neutral-400">if (hr &gt; 75) alert()</code> without historical continuity.
+                        </span>
+                      </li>
+                      <li className="flex items-start space-x-2">
+                        <span className="text-rose-400 font-bold shrink-0">&bull;</span>
+                        <span>
+                          <strong>Motion Artifact False Positives:</strong> Momentary sensor displacement or picking up a glass triggers immediate false alarm cascades.
+                        </span>
+                      </li>
+                      <li className="flex items-start space-x-2">
+                        <span className="text-rose-400 font-bold shrink-0">&bull;</span>
+                        <span>
+                          <strong>Zero Velocity Awareness:</strong> Cannot differentiate between a rapidly accelerating tachycardia surge versus a safe, steady recovery descent.
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
+
+                  {/* Right: HomeWellness Temporal Sequence Model Basis */}
+                  <div className="p-4 rounded-xl bg-gradient-to-b from-cyan-950/30 to-[#0e1218] border border-cyan-500/50 space-y-2.5">
+                    <div className="flex items-center justify-between border-b border-neutral-800/80 pb-2">
+                      <span className="text-cyan-300 font-semibold text-xs font-mono uppercase flex items-center space-x-1.5">
+                        <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>HomeWellness Temporal Sequence Model Basis</span>
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-cyan-950 text-cyan-200 border border-cyan-700 font-bold">
+                        CLINICAL GRADE
+                      </span>
+                    </div>
+
+                    <ul className="text-xs space-y-2 text-neutral-200 font-sans">
+                      <li className="flex items-start space-x-2">
+                        <span className="text-cyan-400 font-bold shrink-0">&bull;</span>
+                        <span>
+                          <strong>Sliding Window Integration:</strong> Continuously streams 25Hz optical PPG into 30-second temporal evaluation arrays (30 points).
+                        </span>
+                      </li>
+                      <li className="flex items-start space-x-2">
+                        <span className="text-cyan-400 font-bold shrink-0">&bull;</span>
+                        <span>
+                          <strong>First &amp; Second Order Derivatives:</strong> Computes instantaneous slope velocity <code className="text-cyan-300">d(bpm)/dt</code> and curvature to detect trajectory acceleration.
+                        </span>
+                      </li>
+                      <li className="flex items-start space-x-2">
+                        <span className="text-cyan-400 font-bold shrink-0">&bull;</span>
+                        <span>
+                          <strong>Anomaly Persistence Criterion (τ):</strong> Suppresses transient spikes (&lt;20s); triggers escalation only when physiological deviation persists continuously across windows.
+                        </span>
+                      </li>
+                      <li className="flex items-start space-x-2">
+                        <span className="text-cyan-400 font-bold shrink-0">&bull;</span>
+                        <span>
+                          <strong>Principle-Governed Surge Windows:</strong> Long-term Principle PRIN-03 sets a 120-second vagal surge tolerance window before committing persistent episodic risk vectors.
+                        </span>
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              {/* 4 Phase Trajectory State Machine */}
+              <div className="bg-[#090b0f] p-5 rounded-xl border border-neutral-800 space-y-4">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold uppercase tracking-wider text-white font-mono flex items-center space-x-1.5">
+                    <Compass className="w-3.5 h-3.5 text-cyan-400" />
+                    <span>Four-Phase Physiological Trajectory State Machine</span>
+                  </span>
+                  <span className="text-[11px] text-neutral-400 font-mono">
+                    Current: <strong className="text-cyan-300">{tsMetrics.trajectoryState}</strong>
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+                  {/* Phase 1 */}
+                  <div
+                    className={`p-3.5 rounded-lg border space-y-1.5 transition ${
+                      tsMetrics.trajectoryState === 'CIRCADIAN_STABLE'
+                        ? 'bg-sky-950/50 border-sky-500 ring-1 ring-sky-400'
+                        : 'bg-[#0e1218] border-neutral-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-bold text-sky-300">CIRCADIAN_STABLE</span>
+                      {tsMetrics.trajectoryState === 'CIRCADIAN_STABLE' && (
+                        <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+                      )}
+                    </div>
+                    <div className="text-[11px] font-mono text-neutral-400">
+                      Slope: ~0.0 bpm/min • τ = 0s
+                    </div>
+                    <p className="text-[11px] text-neutral-300 font-sans leading-relaxed">
+                      Resting biometrics oscillate gently within expected 95% confidence intervals (62–66 bpm). Zero intervention required.
+                    </p>
+                  </div>
+
+                  {/* Phase 2 */}
+                  <div
+                    className={`p-3.5 rounded-lg border space-y-1.5 transition ${
+                      tsMetrics.trajectoryState === 'ACUTE_ASCENT'
+                        ? 'bg-rose-950/50 border-rose-500 ring-1 ring-rose-400'
+                        : 'bg-[#0e1218] border-neutral-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-bold text-rose-300">ACUTE_ASCENT</span>
+                      {tsMetrics.trajectoryState === 'ACUTE_ASCENT' && (
+                        <span className="w-2 h-2 rounded-full bg-rose-400 animate-ping" />
+                      )}
+                    </div>
+                    <div className="text-[11px] font-mono text-neutral-400">
+                      Slope: &ge; +4.0 bpm/min • τ &ge; 20s
+                    </div>
+                    <p className="text-[11px] text-neutral-300 font-sans leading-relaxed">
+                      Rapid resting HR climb (18:56: 65 &rarr; 78 bpm). Triggered urgent triage branch after 22 seconds of confirmed persistence.
+                    </p>
+                  </div>
+
+                  {/* Phase 3 */}
+                  <div
+                    className={`p-3.5 rounded-lg border space-y-1.5 transition ${
+                      tsMetrics.trajectoryState === 'SUSTAINED_PEAK'
+                        ? 'bg-amber-950/50 border-amber-500 ring-1 ring-amber-400'
+                        : 'bg-[#0e1218] border-neutral-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-bold text-amber-300">SUSTAINED_PEAK</span>
+                      {tsMetrics.trajectoryState === 'SUSTAINED_PEAK' && (
+                        <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                      )}
+                    </div>
+                    <div className="text-[11px] font-mono text-neutral-400">
+                      Plateau Slope: +0.8 bpm/min • τ = 82s
+                    </div>
+                    <p className="text-[11px] text-neutral-300 font-sans leading-relaxed">
+                      Sustained peak tachycardia (18:57: 82 bpm, SpO2 93%). Proactively triggered duplex voice channel check-in with Alice.
+                    </p>
+                  </div>
+
+                  {/* Phase 4 */}
+                  <div
+                    className={`p-3.5 rounded-lg border space-y-1.5 transition ${
+                      tsMetrics.trajectoryState === 'VAGAL_DESCENT'
+                        ? 'bg-emerald-950/50 border-emerald-500 ring-1 ring-emerald-400'
+                        : 'bg-[#0e1218] border-neutral-800'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between">
+                      <span className="text-xs font-mono font-bold text-emerald-300">VAGAL_DESCENT</span>
+                      {tsMetrics.trajectoryState === 'VAGAL_DESCENT' && (
+                        <span className="w-2 h-2 rounded-full bg-emerald-400" />
+                      )}
+                    </div>
+                    <div className="text-[11px] font-mono text-neutral-400">
+                      Slope: &le; -5.0 bpm/min • τ &rarr; 0s
+                    </div>
+                    <p className="text-[11px] text-neutral-300 font-sans leading-relaxed">
+                      Steep recovery descent (18:58: 82 &rarr; 65 bpm). Verified parasympathetic stabilization; cleared anomaly alert state.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              {/* Continuous Signal Processing Pipeline Flow */}
+              <div className="bg-[#090b0f] p-5 rounded-xl border border-neutral-800 space-y-3">
+                <span className="text-xs font-semibold uppercase tracking-wider text-neutral-400 font-mono block">
+                  Continuous Time-Series Signal Flow
+                </span>
+
+                <div className="flex flex-wrap items-center gap-1.5 text-[11px] font-mono text-neutral-300">
+                  <span className="px-2 py-1 rounded bg-sky-950 border border-sky-800 text-sky-300">
+                    25Hz Hardware PPG
+                  </span>
+                  <span className="text-neutral-600">&rarr;</span>
+                  <span className="px-2 py-1 rounded bg-neutral-900 border border-neutral-800">
+                    FIR Bandpass (0.5–4.0 Hz)
+                  </span>
+                  <span className="text-neutral-600">&rarr;</span>
+                  <span className="px-2 py-1 rounded bg-neutral-900 border border-neutral-800">
+                    30s Sliding Resampler (1Hz)
+                  </span>
+                  <span className="text-neutral-600">&rarr;</span>
+                  <span className="px-2 py-1 rounded bg-cyan-950 border border-cyan-800 text-cyan-300">
+                    Velocity Extractor d(bpm)/dt
+                  </span>
+                  <span className="text-neutral-600">&rarr;</span>
+                  <span className="px-2 py-1 rounded bg-amber-950 border border-amber-800 text-amber-300">
+                    Persistence Gate (τ &ge; 20s)
+                  </span>
+                  <span className="text-neutral-600">&rarr;</span>
+                  <span className="px-2 py-1 rounded bg-purple-950 border border-purple-800 text-purple-300">
+                    Principle Invariant (PRIN-03: 120s)
+                  </span>
+                  <span className="text-neutral-600">&rarr;</span>
+                  <span className="px-2 py-1 rounded bg-emerald-950 border border-emerald-800 text-emerald-300">
+                    Episodic Vector Memory
+                  </span>
+                </div>
+              </div>
+            </div>
+          )}
+
           {activeTab === 'principles' && (
             <div className="space-y-6">
               {/* Header Title */}
@@ -970,6 +1280,29 @@ homewellness_agent = builder.compile(checkpointer=checkpointer)
 
               {/* State Channel Cards */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                {/* Time-Series Stream Channel Card */}
+                <div className="bg-[#0e1218] p-4 rounded-xl border border-cyan-900/60 space-y-2 md:col-span-2">
+                  <div className="flex items-center justify-between text-xs text-neutral-400 border-b border-neutral-800/80 pb-1.5">
+                    <span className="text-cyan-400 font-semibold flex items-center space-x-1.5">
+                      <Activity className="w-3.5 h-3.5 text-cyan-400" />
+                      <span>channel: time_series_stream</span>
+                    </span>
+                    <span className="text-cyan-300 font-mono text-[10px] bg-cyan-950 px-2 py-0.5 rounded border border-cyan-800 font-bold">
+                      30-SECOND SLIDING BUFFER (25Hz PPG)
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-xs font-mono text-neutral-300">
+                    <div>samplingRate: <strong className="text-white">25 Hz (1Hz resampled)</strong></div>
+                    <div>trendVelocity (d/dt): <strong className="text-cyan-300">{formatSlope(tsMetrics.trendSlopeBpmPerMin)}</strong></div>
+                    <div>trajectoryState: <strong className="text-white">{tsMetrics.trajectoryState}</strong></div>
+                    <div>anomalyPersistence: <strong className="text-amber-300">{tsMetrics.anomalyPersistenceSec}s</strong></div>
+                    <div>rollingMeanHr (EWMA): <strong className="text-white">{tsMetrics.rollingMeanHr} bpm</strong></div>
+                    <div>rollingStdDev (σ): <strong className="text-white">{tsMetrics.rollingStdDev} bpm</strong></div>
+                    <div>windowPoints: <strong className="text-white">{tsMetrics.windowPoints.length} samples</strong></div>
+                    <div>ppgSignalQuality: <strong className="text-emerald-300">OPTIMAL (28.4 dB)</strong></div>
+                  </div>
+                </div>
+
                 <div className="bg-[#0e1218] p-4 rounded-xl border border-neutral-800 space-y-2">
                   <div className="flex items-center justify-between text-xs text-neutral-400 border-b border-neutral-800/80 pb-1.5">
                     <span className="text-emerald-400 font-semibold">channel: vitals</span>

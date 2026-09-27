@@ -47,7 +47,6 @@ export const Smartwatch: React.FC<SmartwatchProps> = ({
               <stop offset="100%" stopColor="rgba(0,0,0,0.22)" />
             </linearGradient>
           </defs>
-          {/* Tapered strap path curving smoothly */}
           <path
             d="M 28 0 L 152 0 C 146 30 142 60 138 90 L 42 90 C 38 60 34 30 28 0 Z"
             fill={`url(#top-band-grad-${cleanTime})`}
@@ -56,7 +55,6 @@ export const Smartwatch: React.FC<SmartwatchProps> = ({
             d="M 28 0 L 152 0 C 146 30 142 60 138 90 L 42 90 C 38 60 34 30 28 0 Z"
             fill={`url(#band-shadow-top-${cleanTime})`}
           />
-          {/* Subtle central depression line */}
           <line
             x1="90"
             y1="5"
@@ -80,7 +78,6 @@ export const Smartwatch: React.FC<SmartwatchProps> = ({
             boxShadow: '2px 3px 6px rgba(0,0,0,0.25)',
           }}
         >
-          {/* Crown knurling ridges */}
           <div className="w-full h-[2px] bg-neutral-600/60" />
           <div className="w-full h-[2px] bg-neutral-600/60" />
           <div className="w-full h-[2px] bg-neutral-600/60" />
@@ -90,7 +87,7 @@ export const Smartwatch: React.FC<SmartwatchProps> = ({
           <div className="w-full h-[2px] bg-neutral-600/60" />
         </div>
 
-        {/* Hardware: Side Button on Right (Flush Pill) */}
+        {/* Hardware: Side Button on Right */}
         <div
           className="absolute -right-[6px] top-[162px] sm:top-[182px] w-[8px] h-[54px] sm:h-[62px] z-0 shadow-sm"
           style={{
@@ -140,32 +137,32 @@ export const Smartwatch: React.FC<SmartwatchProps> = ({
 
               {/* Screen Content Area */}
               <div className="relative z-10 flex flex-col h-full justify-between">
-                {/* Upper Section: Warning Notification Placeholder & Aligned Time Display */}
+                {/* Upper Section: Warning Banner & Clock */}
                 <div className="flex flex-col justify-start">
-                  {/* Upper Part: Placeholder for Warn Notification */}
-                  <div className="w-full h-[28px] sm:h-[32px] flex items-center justify-center shrink-0">
+                  {/* Warning Notification Placeholder */}
+                  <div className="w-full h-[28px] sm:h-[30px] flex items-center justify-center shrink-0">
                     {data.warning ? (
                       <div
                         id={`warn-banner-${data.time.replace(':', '')}`}
-                        className="w-full bg-[#faebc6] text-black text-[11px] sm:text-[12px] font-normal px-2.5 sm:px-3 py-1 rounded-lg shadow-xs text-center truncate"
+                        className="w-full bg-[#faebc6] text-black text-[11px] sm:text-[12px] font-normal px-2 sm:px-2.5 py-0.5 rounded-lg shadow-xs text-center truncate flex items-center justify-center space-x-1"
                       >
-                        {data.warning}
+                        <span className="w-1.5 h-1.5 rounded-full bg-rose-500 animate-ping inline-block" />
+                        <span>{data.warning}</span>
                       </div>
                     ) : (
-                      /* Placeholder reserving exact same upper space for consistent horizontal alignment */
                       <div className="w-full h-full" aria-hidden="true" />
                     )}
                   </div>
 
-                  {/* Middle Part: Aligned Digital Clock Time-showing */}
-                  <div className="w-full flex items-center justify-center pt-2 pb-1.5 sm:pt-3 sm:pb-2">
+                  {/* Digital Clock Time Display */}
+                  <div className="w-full flex items-center justify-center py-2.5 sm:py-3.5">
                     <div
                       id={`clock-display-${data.time.replace(':', '')}`}
                       onClick={(e) => {
                         e.stopPropagation();
                         onSelect?.();
                       }}
-                      title={`Click timestamp ${data.time} to view system log and AI agent actions`}
+                      title={`Click timestamp ${data.time} to view system log`}
                       className={`text-white text-center font-normal tracking-tight select-none cursor-pointer transition-all duration-200 hover:text-emerald-300 active:scale-95 relative group/clock text-[38px] sm:text-[44px] leading-none ${
                         isSelected ? 'text-white' : 'text-white/90'
                       }`}
@@ -191,8 +188,11 @@ export const Smartwatch: React.FC<SmartwatchProps> = ({
                   }`}
                 >
                   {/* Left Column: Vitals List */}
-                  <div className="flex flex-col space-y-[1px] sm:space-y-[2px] text-[10.5px] sm:text-[11.5px] font-normal leading-[1.35]">
-                    <div>Resting HR: {data.restingHr} bpm</div>
+                  <div className="flex flex-col space-y-1 text-[11px] sm:text-[12px] font-normal leading-[1.35]">
+                    <div className="flex items-center space-x-1">
+                      <span className="font-semibold">Resting HR:</span>
+                      <span className="font-bold">{data.restingHr} bpm</span>
+                    </div>
                     <div>HRV: {data.hrv} ms</div>
                     <div>SpO2: {data.spo2}%</div>
                     <div>Avg. Sleep: {data.avgSleep.toFixed(1)} Hrs</div>
@@ -206,18 +206,18 @@ export const Smartwatch: React.FC<SmartwatchProps> = ({
                       onTalkClick?.(e);
                     }}
                     type="button"
-                    className="bg-white hover:bg-neutral-50 active:bg-neutral-100 text-black text-[11px] sm:text-[11.5px] font-normal px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl shadow-xs transition-all border border-neutral-200/50 hover:shadow cursor-pointer shrink-0 ml-1.5"
+                    className="bg-white hover:bg-neutral-50 active:bg-neutral-100 text-black text-[11px] sm:text-[11.5px] font-normal px-2.5 sm:px-3 py-2 sm:py-2.5 rounded-xl shadow-xs transition-all border border-neutral-200/50 hover:shadow cursor-pointer shrink-0 ml-1.5"
                   >
                     Click to Talk
                   </button>
                 </div>
 
                 {/* Bottom Section: Optional Medication Reminder Banner or Blank Placeholder */}
-                <div className="h-[34px] sm:h-[38px] flex items-center shrink-0">
+                <div className="h-[28px] sm:h-[32px] flex items-center shrink-0">
                   {data.reminder ? (
                     <div
                       id={`reminder-banner-${data.time.replace(':', '')}`}
-                      className="w-full bg-[#b5f3d6] text-black text-[11px] sm:text-[11.5px] font-normal px-2.5 sm:px-3 py-1.5 sm:py-2 rounded-xl shadow-xs text-center truncate"
+                      className="w-full bg-[#b5f3d6] text-black text-[10.5px] sm:text-[11.5px] font-normal px-2.5 py-1.5 rounded-xl shadow-xs text-center truncate"
                     >
                       {data.reminder}
                     </div>
@@ -252,7 +252,6 @@ export const Smartwatch: React.FC<SmartwatchProps> = ({
               <stop offset="100%" stopColor="rgba(0,0,0,0.22)" />
             </linearGradient>
           </defs>
-          {/* Tapered strap path curving smoothly downwards */}
           <path
             d="M 42 0 L 138 0 C 142 30 146 60 152 90 L 28 90 C 34 60 38 30 42 0 Z"
             fill={`url(#bottom-band-grad-${cleanTime})`}
@@ -261,7 +260,6 @@ export const Smartwatch: React.FC<SmartwatchProps> = ({
             d="M 42 0 L 138 0 C 142 30 146 60 152 90 L 28 90 C 34 60 38 30 42 0 Z"
             fill={`url(#band-shadow-bottom-${cleanTime})`}
           />
-          {/* Center line */}
           <line
             x1="90"
             y1="5"

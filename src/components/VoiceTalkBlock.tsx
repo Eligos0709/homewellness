@@ -29,8 +29,12 @@ import {
   Stethoscope,
   User,
   Scale,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from 'lucide-react';
 import { VitalData, CaregiverContextItem } from '../types';
+import { formatSlope, getTrajectoryBadge } from '../data/timeSeriesHelper';
 import {
   isTTSSupported,
   findBestVoices,
@@ -995,6 +999,55 @@ export const VoiceTalkBlock: React.FC<VoiceTalkBlockProps> = ({
               <span className="font-semibold text-amber-300">{data.avgSleep.toFixed(1)} Hrs (Deficit)</span>
             </div>
           </div>
+
+          {/* Time-Series Continuous Dynamics */}
+          {(() => {
+            const slope = data.timeSeries?.trendSlopeBpmPerMin ?? 0;
+            const traj = data.timeSeries?.trajectoryState ?? 'CIRCADIAN_STABLE';
+            const badge = getTrajectoryBadge(traj);
+            const persistence = data.timeSeries?.anomalyPersistenceSec ?? 0;
+
+            return (
+              <div className="p-2.5 rounded-lg bg-[#090c12] border border-cyan-900/60 text-[11px] space-y-1.5">
+                <div className="flex items-center justify-between text-cyan-300 font-semibold border-b border-cyan-950 pb-1">
+                  <span className="flex items-center space-x-1">
+                    <Activity className="w-3 h-3 text-cyan-400" />
+                    <span>Time-Series Dynamics (30s Window)</span>
+                  </span>
+                  <span className="text-[10px] text-cyan-400 font-mono">25Hz PPG</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-400">Trend Velocity:</span>
+                  <span
+                    className={`font-semibold flex items-center space-x-0.5 ${
+                      slope > 0.5 ? 'text-rose-400' : slope < -0.5 ? 'text-sky-300' : 'text-emerald-400'
+                    }`}
+                  >
+                    {slope > 0.5 ? (
+                      <TrendingUp className="w-3 h-3" />
+                    ) : slope < -0.5 ? (
+                      <TrendingDown className="w-3 h-3" />
+                    ) : (
+                      <Minus className="w-3 h-3" />
+                    )}
+                    <span>{formatSlope(slope)}</span>
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-400">Trajectory State:</span>
+                  <span className={`px-1.5 py-0.2 rounded font-bold text-[10px] ${badge.bg} ${badge.text}`}>
+                    {badge.label}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-neutral-400">Persistence (τ):</span>
+                  <span className="font-mono text-neutral-200">
+                    {persistence > 0 ? `${persistence}s continuous` : '0s (Nominal)'}
+                  </span>
+                </div>
+              </div>
+            );
+          })()}
 
           {data.reminder && (
             <div className="p-2 rounded bg-amber-950/40 border border-amber-800/60 text-amber-300 text-[11px] flex items-center space-x-2">

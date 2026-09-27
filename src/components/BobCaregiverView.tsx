@@ -32,6 +32,9 @@ import {
   Lock,
   ArrowRight,
   RotateCcw,
+  TrendingUp,
+  TrendingDown,
+  Minus,
 } from 'lucide-react';
 import {
   VitalData,
@@ -40,6 +43,7 @@ import {
   CaregiverAlert,
   CaregiverChatMessage,
 } from '../types';
+import { formatSlope, getTrajectoryBadge } from '../data/timeSeriesHelper';
 
 interface BobCaregiverViewProps {
   aliceAgreedToShare: boolean;
@@ -247,8 +251,8 @@ export const BobCaregiverView: React.FC<BobCaregiverViewProps> = ({
           </div>
         </div>
 
-        {/* Quick vitals metrics */}
-        <div className="flex flex-wrap items-center gap-2 sm:gap-4 text-xs font-mono">
+        {/* Quick vitals metrics & Time-Series Attributes */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs font-mono">
           <div className="bg-neutral-800/90 px-3 py-1.5 rounded-lg border border-neutral-700">
             <span className="text-neutral-400 mr-1.5">Resting HR:</span>
             <span
@@ -260,19 +264,49 @@ export const BobCaregiverView: React.FC<BobCaregiverViewProps> = ({
             </span>
           </div>
 
-          <div className="bg-neutral-800/90 px-3 py-1.5 rounded-lg border border-neutral-700">
-            <span className="text-neutral-400 mr-1.5">HRV:</span>
-            <span className="font-bold text-white">{selectedWatch.hrv} ms</span>
-          </div>
+          {/* Time-Series Trend Velocity */}
+          {(() => {
+            const slope = selectedWatch.timeSeries?.trendSlopeBpmPerMin ?? 0;
+            const traj = selectedWatch.timeSeries?.trajectoryState ?? 'CIRCADIAN_STABLE';
+            const badge = getTrajectoryBadge(traj);
+
+            return (
+              <>
+                <div className="bg-neutral-800/90 px-3 py-1.5 rounded-lg border border-neutral-700 flex items-center space-x-1.5">
+                  <span className="text-neutral-400">Velocity d/dt:</span>
+                  <span
+                    className={`font-bold flex items-center space-x-0.5 ${
+                      slope > 0.5
+                        ? 'text-rose-400'
+                        : slope < -0.5
+                        ? 'text-sky-300'
+                        : 'text-emerald-400'
+                    }`}
+                  >
+                    {slope > 0.5 ? (
+                      <TrendingUp className="w-3 h-3" />
+                    ) : slope < -0.5 ? (
+                      <TrendingDown className="w-3 h-3" />
+                    ) : (
+                      <Minus className="w-3 h-3" />
+                    )}
+                    <span>{formatSlope(slope)}</span>
+                  </span>
+                </div>
+
+                <div className="bg-neutral-800/90 px-3 py-1.5 rounded-lg border border-neutral-700 flex items-center space-x-1.5">
+                  <span className="text-neutral-400">Trajectory:</span>
+                  <span className={`px-1.5 py-0.2 rounded font-bold text-[10px] ${badge.bg} ${badge.text}`}>
+                    {badge.label}
+                  </span>
+                </div>
+              </>
+            );
+          })()}
 
           <div className="bg-neutral-800/90 px-3 py-1.5 rounded-lg border border-neutral-700">
             <span className="text-neutral-400 mr-1.5">SpO2:</span>
             <span className="font-bold text-white">{selectedWatch.spo2}%</span>
-          </div>
-
-          <div className="bg-neutral-800/90 px-3 py-1.5 rounded-lg border border-neutral-700">
-            <span className="text-neutral-400 mr-1.5">Sleep:</span>
-            <span className="font-bold text-amber-300">{selectedWatch.avgSleep} hrs</span>
           </div>
         </div>
 
@@ -291,6 +325,53 @@ export const BobCaregiverView: React.FC<BobCaregiverViewProps> = ({
               </option>
             ))}
           </select>
+        </div>
+      </div>
+
+      {/* Time-Series Trajectory Ribbon: 18:54 to 19:12 Chronological Progression */}
+      <div className="bg-white rounded-2xl p-4 shadow-xs border border-neutral-200 space-y-2">
+        <div className="flex items-center justify-between text-xs">
+          <div className="flex items-center space-x-2">
+            <Activity className="w-4 h-4 text-blue-600" />
+            <span className="font-semibold text-neutral-800">
+              Alice's Heart Rate Time-Series Timeline (18:54 – 19:12 UTC)
+            </span>
+          </div>
+          <span className="text-[11px] text-neutral-500 font-mono">
+            Click any point to inspect snapshot
+          </span>
+        </div>
+
+        <div className="grid grid-cols-5 sm:grid-cols-9 lg:grid-cols-18 gap-1.5 pt-1">
+          {allWatches.map((w) => {
+            const isCur = w.time === selectedTime;
+            const slope = w.timeSeries?.trendSlopeBpmPerMin ?? 0;
+            const isAb = w.isAbnormal;
+            const isRec = w.time === '18:58';
+
+            let pillColor = 'bg-neutral-100 hover:bg-neutral-200 text-neutral-700 border-neutral-200';
+            if (isCur) {
+              pillColor = 'bg-blue-600 text-white border-blue-700 shadow-sm ring-2 ring-blue-300';
+            } else if (isAb) {
+              pillColor = 'bg-rose-50 text-rose-800 border-rose-300 hover:bg-rose-100';
+            } else if (isRec) {
+              pillColor = 'bg-sky-50 text-sky-800 border-sky-300 hover:bg-sky-100';
+            }
+
+            return (
+              <button
+                key={w.time}
+                type="button"
+                onClick={() => onSelectTime(w.time)}
+                className={`p-1.5 rounded-lg border text-center transition cursor-pointer flex flex-col items-center justify-between ${pillColor}`}
+                title={`Snapshot ${w.time} UTC: ${w.restingHr} bpm (${formatSlope(slope)})`}
+              >
+                <span className="text-[10px] font-mono">{w.time}</span>
+                <span className="text-xs font-bold font-mono mt-0.5">{w.restingHr}</span>
+                <span className="text-[9px] font-mono opacity-80">{formatSlope(slope).replace(' bpm/min', '')}</span>
+              </button>
+            );
+          })}
         </div>
       </div>
 

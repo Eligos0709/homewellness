@@ -19,11 +19,12 @@ import {
   CaregiverAlert,
   CaregiverChatMessage,
 } from './types';
+import { generateTimeSeriesData } from './data/timeSeriesHelper';
 
 export default function App() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  const initialWatches: VitalData[] = [
+  const rawInitialWatches: VitalData[] = [
     {
       time: '18:54',
       restingHr: 65,
@@ -109,7 +110,7 @@ export default function App() {
     },
   ];
 
-  const extendedWatchesForBob: VitalData[] = [
+  const rawExtendedWatchesForBob: VitalData[] = [
     {
       time: '19:03',
       restingHr: 64,
@@ -202,7 +203,7 @@ export default function App() {
     },
   ];
 
-  const logDataMap: Record<string, SystemLogData> = {
+  const rawLogDataMap: Record<string, SystemLogData> = {
     '18:54': {
       time: '18:54',
       timestampIso: '2026-09-18T18:54:02.148Z',
@@ -546,6 +547,45 @@ export default function App() {
       },
     },
   };
+
+  // Map raw watches to attach full continuous time-series attributes (30s window, derivatives, trajectory)
+  const initialWatches: VitalData[] = rawInitialWatches.map((w) => ({
+    ...w,
+    timeSeries: generateTimeSeriesData(w.time, w.restingHr, w.spo2, w.hrv),
+  }));
+
+  const extendedWatchesForBob: VitalData[] = rawExtendedWatchesForBob.map((w) => ({
+    ...w,
+    timeSeries: generateTimeSeriesData(w.time, w.restingHr, w.spo2, w.hrv),
+  }));
+
+  // Link time-series metrics dynamically into each system log entry
+  const logDataMap: Record<string, SystemLogData> = Object.fromEntries(
+    Object.entries(rawLogDataMap).map(([time, log]) => {
+      const matchWatch = [...initialWatches, ...extendedWatchesForBob].find((w) => w.time === time);
+      const ts = matchWatch?.timeSeries || generateTimeSeriesData(time, 65, 95, 15);
+      return [
+        time,
+        {
+          ...log,
+          activePrinciplesCount: 4,
+          activePrincipleCodes: ['PRIN-01', 'PRIN-02', 'PRIN-03', 'PRIN-04'],
+          principleGovernanceNote:
+            'PRIN-01 non-doctor boundary & PRIN-03 transient vagal tolerance window active',
+          timeSeriesMetrics: {
+            samplingRateHz: ts.samplingRateHz,
+            windowDurationSec: ts.windowDurationSec,
+            trendSlopeBpmPerMin: ts.trendSlopeBpmPerMin,
+            trendDirection: ts.trendDirection,
+            rollingMeanHr: ts.rollingMeanHr,
+            rollingStdDev: ts.rollingStdDev,
+            trajectoryState: ts.trajectoryState,
+            anomalyPersistenceSec: ts.anomalyPersistenceSec,
+          },
+        },
+      ];
+    })
+  );
 
   const [selectedTime, setSelectedTime] = useState<string>('18:54');
   const [activeTalkWatch, setActiveTalkWatch] = useState<VitalData | null>(null);
